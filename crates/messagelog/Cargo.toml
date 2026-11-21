@@ -8,8 +8,11 @@ repository.workspace = true
 
 [dependencies]
 common.workspace = true
-crypto.workspace = true
-asic.workspace = true
+identifiers.workspace = true
 sha2.workspace = true
 chrono.workspace = true
+serde.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tokio.workspace = true
 thiserror.workspace = true

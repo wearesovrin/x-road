@@ -71,10 +71,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             monitor::run_monitor(&bind).await?;
         }
         Commands::Admin { bind } => {
-            security_server::run_admin_api(&bind).await?;
+            let db_url = std::env::var("DATABASE_URL").ok();
+            security_server::run_admin_api(&bind, db_url.as_deref()).await?;
         }
         Commands::Central { bind, instance } => {
-            central_server::run_central_server(&bind, &instance).await?;
+            let db_url = std::env::var("DATABASE_URL").ok();
+            central_server::run_central_server(&bind, &instance, db_url.as_deref()).await?;
         }
     }
 

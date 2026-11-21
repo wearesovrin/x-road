@@ -596,10 +596,13 @@ dependencies = [
 name = "central-server"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "common",
- "globalconf",
+ "identifiers",
  "poem",
  "poem-openapi",
+ "sea-orm",
+ "sea-orm-migration",
  "serde",
  "thiserror",
  "tokio",
@@ -2089,12 +2092,15 @@ dependencies = [
 name = "messagelog"
 version = "0.1.0"
 dependencies = [
- "asic",
  "chrono",
  "common",
- "crypto",
+ "identifiers",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
  "sha2 0.10.9",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -3487,6 +3493,7 @@ dependencies = [
 name = "serverconf"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "common",
  "identifiers",
  "sea-orm",
@@ -3494,7 +3501,9 @@ dependencies = [
  "serde",
  "strum",
  "thiserror",
+ "tokio",
  "tonic",
+ "uuid",
 ]
 
 [[package]]

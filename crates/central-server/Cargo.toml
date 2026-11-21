@@ -8,11 +8,14 @@ repository.workspace = true
 
 [dependencies]
 common.workspace = true
-globalconf.workspace = true
+identifiers.workspace = true
 tokio.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true
 serde.workspace = true
+chrono.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
