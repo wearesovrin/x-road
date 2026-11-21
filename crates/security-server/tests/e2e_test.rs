@@ -1,6 +1,6 @@
 use identifiers::{ClientId, ServiceId};
 use poem::{
-    handler, http::StatusCode, listener::TcpListener, post, web::Json as PoemJson, Route, Server,
+    handler, http::StatusCode, listener::TcpListener, post, web::Json as PoemJson, Response, Route, Server,
 };
 use security_server::{SecurityServerConfig, SecurityServerNode};
 use serde_json::{json, Value};
@@ -26,6 +26,26 @@ async fn mock_user_backend(body: PoemJson<Value>) -> (StatusCode, PoemJson<Value
     (StatusCode::OK, PoemJson(resp))
 }
 
+#[handler]
+async fn mock_soap_backend(body: String) -> Response {
+    let resp = format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Body>
+    <getUserResponse>
+      <result>SUCCESS</result>
+      <echoQuery>{}</echoQuery>
+    </getUserResponse>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>"#,
+        body.len()
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .content_type("text/xml; charset=utf-8")
+        .body(resp)
+}
+
 #[tokio::test]
 async fn test_security_server_e2e_flow() {
     let base_port = next_port();
@@ -40,7 +60,9 @@ async fn test_security_server_e2e_flow() {
     let server_proxy_bind = format!("127.0.0.1:{server_proxy_port}");
 
     // 1. Start mock backend service
-    let backend_app = Route::new().at("/api/user-profile", post(mock_user_backend));
+    let backend_app = Route::new()
+        .at("/api/user-profile", post(mock_user_backend))
+        .at("/soap/user-service", post(mock_soap_backend));
     tokio::spawn(async move {
         let _ = Server::new(TcpListener::bind(&backend_addr))
             .run(backend_app)
@@ -83,6 +105,21 @@ async fn test_security_server_e2e_flow() {
 
     let service = ServiceId::new(provider.clone(), "getUserProfile", Some("v1")).unwrap();
     node.server_conf.grant_access(&service, &consumer).await.unwrap();
+
+    let soap_backend_url = format!("http://127.0.0.1:{backend_port}/soap/user-service");
+    node.server_conf
+        .add_service(
+            &provider,
+            "getSoapUser",
+            None,
+            &soap_backend_url,
+            ServiceType::Soap,
+        )
+        .await
+        .unwrap();
+
+    let soap_service = ServiceId::new(provider.clone(), "getSoapUser", None::<&str>).unwrap();
+    node.server_conf.grant_access(&soap_service, &consumer).await.unwrap();
 
     // 4. Launch Security Server Node in background
     let node_clone = node.clone();
@@ -232,4 +269,59 @@ async fn test_security_server_e2e_flow() {
     assert_eq!(logs_resp.status(), reqwest::StatusCode::OK);
     let logs_list: Vec<Value> = logs_resp.json().await.unwrap();
     assert!(!logs_list.is_empty());
+
+    // -------------------------------------------------------------------------
+    // E2E Test 6: End-to-End SOAP Flow & Fault Handling via quick-xml serde
+    // -------------------------------------------------------------------------
+    let soap_request_envelope = message::SoapEnvelopeXml::new_request(
+        consumer.clone(),
+        soap_service.clone(),
+        Some("<getSoapUser><id>123</id></getSoapUser>".to_string()),
+    );
+    let soap_xml = soap_request_envelope.to_xml().unwrap();
+
+    let soap_resp = http_client
+        .post(&client_proxy_url)
+        .header("content-type", "text/xml; charset=utf-8")
+        .body(soap_xml)
+        .send()
+        .await
+        .expect("Failed to send SOAP request to Client Proxy");
+
+    assert_eq!(soap_resp.status(), reqwest::StatusCode::OK);
+    let soap_resp_xml = soap_resp.text().await.unwrap();
+    assert!(soap_resp_xml.contains("getUserResponse"));
+    assert!(soap_resp_xml.contains("SUCCESS"));
+
+    // Verify SOAP transaction logged in MessageLogDb with discriminator "SOAP"
+    let soap_query_id = soap_request_envelope.header.id;
+    let soap_log_record = node
+        .message_log
+        .get_by_query_id(&soap_query_id)
+        .await
+        .unwrap()
+        .expect("SOAP query was not logged in MessageLogDb!");
+    assert_eq!(soap_log_record.discriminator, "SOAP");
+
+    // Test unauthorized client sending SOAP query returns standard SOAP Fault XML
+    let unauth_soap_envelope = message::SoapEnvelopeXml::new_request(
+        rogue.clone(),
+        soap_service.clone(),
+        Some("<getSoapUser><id>999</id></getSoapUser>".to_string()),
+    );
+    let unauth_soap_resp = http_client
+        .post(&client_proxy_url)
+        .header("content-type", "text/xml; charset=utf-8")
+        .body(unauth_soap_envelope.to_xml().unwrap())
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(unauth_soap_resp.status(), reqwest::StatusCode::FORBIDDEN);
+    let fault_xml = unauth_soap_resp.text().await.unwrap();
+    let parsed_fault = message::SoapEnvelopeXml::from_xml(&fault_xml).expect("Fault must be parseable SOAP XML");
+    assert!(parsed_fault.is_fault());
+    let fault = parsed_fault.body.fault.unwrap();
+    assert_eq!(fault.fault_code, "SOAP-ENV:Client");
+    assert_eq!(fault.fault_string, "Client.AccessDenied");
 }

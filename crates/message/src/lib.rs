@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+pub mod soap;
+pub use soap::{SoapBodyXml, SoapEnvelopeXml, SoapFaultDetailXml, SoapFaultXml, SoapHeaderXml};
+
 /// Standard headers included in every X-Road message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XRoadHeaders {

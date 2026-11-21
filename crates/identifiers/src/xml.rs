@@ -9,16 +9,17 @@ pub const XROAD_IDENTIFIERS_NS: &str = "http://x-road.eu/xsd/identifiers";
 
 /// XML representation of an X-Road Client identifier (`id:XRoadClientIdentifierType`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "client")]
 pub struct XRoadClientIdentifierType {
-    #[serde(rename = "@objectType", alias = "@id:objectType")]
+    #[serde(rename = "@id:objectType", alias = "@objectType")]
     pub object_type: XRoadObjectType,
-    #[serde(rename = "xRoadInstance", alias = "id:xRoadInstance")]
+    #[serde(rename = "id:xRoadInstance", alias = "xRoadInstance")]
     pub xroad_instance: String,
-    #[serde(rename = "memberClass", alias = "id:memberClass")]
+    #[serde(rename = "id:memberClass", alias = "memberClass")]
     pub member_class: String,
-    #[serde(rename = "memberCode", alias = "id:memberCode")]
+    #[serde(rename = "id:memberCode", alias = "memberCode")]
     pub member_code: String,
-    #[serde(rename = "subsystemCode", alias = "id:subsystemCode", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "id:subsystemCode", alias = "subsystemCode", default, skip_serializing_if = "Option::is_none")]
     pub subsystem_code: Option<String>,
 }
 
@@ -75,20 +76,28 @@ impl TryFrom<XRoadClientIdentifierType> for ClientId {
 }
 
 impl XRoadClientIdentifierType {
-    /// Formats this client identifier as an XML element with standard `id:` prefix and namespace.
+    /// Formats this client identifier as an XML element using quick-xml serde.
     pub fn to_xml(&self, tag_name: &str) -> String {
-        let mut xml = format!(
-            r#"<id:{} id:objectType="{}"><id:xRoadInstance>{}</id:xRoadInstance><id:memberClass>{}</id:memberClass><id:memberCode>{}</id:memberCode>"#,
-            tag_name, self.object_type, self.xroad_instance, self.member_class, self.member_code
-        );
-        if let Some(sub) = &self.subsystem_code {
-            xml.push_str(&format!("<id:subsystemCode>{}</id:subsystemCode>", sub));
+        let serialized = quick_xml::se::to_string(self).unwrap_or_default();
+        if tag_name != "client" {
+            let open = format!("<{}", tag_name);
+            let close = format!("</{}>", tag_name);
+            serialized
+                .replacen("<client", &open, 1)
+                .replacen("</client>", &close, 1)
+        } else {
+            serialized
         }
-        xml.push_str(&format!("</id:{}>", tag_name));
-        xml
     }
 
-    /// Parses an X-Road client identifier from an XML string.
+    /// Serializes to XML using quick-xml serde.
+    pub fn serialize_xml(&self) -> XRoadResult<String> {
+        quick_xml::se::to_string(self).map_err(|e| {
+            XRoadError::IdentifierParse(format!("Failed to serialize ClientId XML: {}", e))
+        })
+    }
+
+    /// Parses an X-Road client identifier from an XML string using quick-xml serde.
     pub fn parse_xml(xml: &str) -> XRoadResult<ClientId> {
         let parsed: XRoadClientIdentifierType = quick_xml::de::from_str(xml).map_err(|e| {
             XRoadError::IdentifierParse(format!("Failed to parse ClientId XML: {}", e))
@@ -99,20 +108,21 @@ impl XRoadClientIdentifierType {
 
 /// XML representation of an X-Road Service identifier (`id:XRoadServiceIdentifierType`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "service")]
 pub struct XRoadServiceIdentifierType {
-    #[serde(rename = "@objectType", alias = "@id:objectType")]
+    #[serde(rename = "@id:objectType", alias = "@objectType")]
     pub object_type: XRoadObjectType,
-    #[serde(rename = "xRoadInstance", alias = "id:xRoadInstance")]
+    #[serde(rename = "id:xRoadInstance", alias = "xRoadInstance")]
     pub xroad_instance: String,
-    #[serde(rename = "memberClass", alias = "id:memberClass")]
+    #[serde(rename = "id:memberClass", alias = "memberClass")]
     pub member_class: String,
-    #[serde(rename = "memberCode", alias = "id:memberCode")]
+    #[serde(rename = "id:memberCode", alias = "memberCode")]
     pub member_code: String,
-    #[serde(rename = "subsystemCode", alias = "id:subsystemCode", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "id:subsystemCode", alias = "subsystemCode", default, skip_serializing_if = "Option::is_none")]
     pub subsystem_code: Option<String>,
-    #[serde(rename = "serviceCode", alias = "id:serviceCode")]
+    #[serde(rename = "id:serviceCode", alias = "serviceCode")]
     pub service_code: String,
-    #[serde(rename = "serviceVersion", alias = "id:serviceVersion", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "id:serviceVersion", alias = "serviceVersion", default, skip_serializing_if = "Option::is_none")]
     pub service_version: Option<String>,
 }
 
@@ -151,25 +161,28 @@ impl TryFrom<XRoadServiceIdentifierType> for ServiceId {
 }
 
 impl XRoadServiceIdentifierType {
+    /// Formats this service identifier as an XML element using quick-xml serde.
     pub fn to_xml(&self, tag_name: &str) -> String {
-        let mut xml = format!(
-            r#"<id:{} id:objectType="SERVICE"><id:xRoadInstance>{}</id:xRoadInstance><id:memberClass>{}</id:memberClass><id:memberCode>{}</id:memberCode>"#,
-            tag_name, self.xroad_instance, self.member_class, self.member_code
-        );
-        if let Some(sub) = &self.subsystem_code {
-            xml.push_str(&format!("<id:subsystemCode>{}</id:subsystemCode>", sub));
+        let serialized = quick_xml::se::to_string(self).unwrap_or_default();
+        if tag_name != "service" {
+            let open = format!("<{}", tag_name);
+            let close = format!("</{}>", tag_name);
+            serialized
+                .replacen("<service", &open, 1)
+                .replacen("</service>", &close, 1)
+        } else {
+            serialized
         }
-        xml.push_str(&format!(
-            "<id:serviceCode>{}</id:serviceCode>",
-            self.service_code
-        ));
-        if let Some(ver) = &self.service_version {
-            xml.push_str(&format!("<id:serviceVersion>{}</id:serviceVersion>", ver));
-        }
-        xml.push_str(&format!("</id:{}>", tag_name));
-        xml
     }
 
+    /// Serializes to XML using quick-xml serde.
+    pub fn serialize_xml(&self) -> XRoadResult<String> {
+        quick_xml::se::to_string(self).map_err(|e| {
+            XRoadError::IdentifierParse(format!("Failed to serialize ServiceId XML: {}", e))
+        })
+    }
+
+    /// Parses an X-Road service identifier from an XML string using quick-xml serde.
     pub fn parse_xml(xml: &str) -> XRoadResult<ServiceId> {
         let parsed: XRoadServiceIdentifierType = quick_xml::de::from_str(xml).map_err(|e| {
             XRoadError::IdentifierParse(format!("Failed to parse ServiceId XML: {}", e))
@@ -180,16 +193,17 @@ impl XRoadServiceIdentifierType {
 
 /// XML representation of an X-Road Security Server identifier (`id:XRoadSecurityServerIdentifierType`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "server")]
 pub struct XRoadSecurityServerIdentifierType {
-    #[serde(rename = "@objectType", alias = "@id:objectType")]
+    #[serde(rename = "@id:objectType", alias = "@objectType")]
     pub object_type: XRoadObjectType,
-    #[serde(rename = "xRoadInstance", alias = "id:xRoadInstance")]
+    #[serde(rename = "id:xRoadInstance", alias = "xRoadInstance")]
     pub xroad_instance: String,
-    #[serde(rename = "memberClass", alias = "id:memberClass")]
+    #[serde(rename = "id:memberClass", alias = "memberClass")]
     pub member_class: String,
-    #[serde(rename = "memberCode", alias = "id:memberCode")]
+    #[serde(rename = "id:memberCode", alias = "memberCode")]
     pub member_code: String,
-    #[serde(rename = "serverCode", alias = "id:serverCode")]
+    #[serde(rename = "id:serverCode", alias = "serverCode")]
     pub server_code: String,
 }
 
@@ -215,5 +229,36 @@ impl TryFrom<XRoadSecurityServerIdentifierType> for SecurityServerId {
             xml_id.member_code,
             xml_id.server_code,
         )
+    }
+}
+
+impl XRoadSecurityServerIdentifierType {
+    /// Formats this security server identifier as an XML element using quick-xml serde.
+    pub fn to_xml(&self, tag_name: &str) -> String {
+        let serialized = quick_xml::se::to_string(self).unwrap_or_default();
+        if tag_name != "server" {
+            let open = format!("<{}", tag_name);
+            let close = format!("</{}>", tag_name);
+            serialized
+                .replacen("<server", &open, 1)
+                .replacen("</server>", &close, 1)
+        } else {
+            serialized
+        }
+    }
+
+    /// Serializes to XML using quick-xml serde.
+    pub fn serialize_xml(&self) -> XRoadResult<String> {
+        quick_xml::se::to_string(self).map_err(|e| {
+            XRoadError::IdentifierParse(format!("Failed to serialize SecurityServerId XML: {}", e))
+        })
+    }
+
+    /// Parses an X-Road security server identifier from an XML string using quick-xml serde.
+    pub fn parse_xml(xml: &str) -> XRoadResult<SecurityServerId> {
+        let parsed: XRoadSecurityServerIdentifierType = quick_xml::de::from_str(xml).map_err(|e| {
+            XRoadError::IdentifierParse(format!("Failed to parse SecurityServerId XML: {}", e))
+        })?;
+        SecurityServerId::try_from(parsed)
     }
 }

@@ -1,8 +1,146 @@
 use base64::prelude::*;
 use common::{XRoadError, XRoadResult};
 use identifiers::ClientId;
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
+use serde::{Deserialize, Serialize};
+
+/// XML DTO for the root `<conf>` / `<ns3:conf>` element.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename = "conf")]
+pub struct SharedParamsXml {
+    #[serde(rename = "@xmlns:ns2", default)]
+    pub ns2: Option<String>,
+    #[serde(rename = "@xmlns:ns3", default)]
+    pub ns3: Option<String>,
+    #[serde(rename = "instanceIdentifier")]
+    pub instance_identifier: String,
+    #[serde(rename = "approvedCA", default)]
+    pub approved_cas: Vec<ApprovedCaXml>,
+    #[serde(rename = "approvedTSA", default)]
+    pub approved_tsas: Vec<ApprovedTsaXml>,
+    #[serde(rename = "member", default)]
+    pub members: Vec<MemberXml>,
+    #[serde(rename = "securityServer", default)]
+    pub security_servers: Vec<SecurityServerXml>,
+    #[serde(rename = "globalGroup", default, skip_serializing_if = "Vec::is_empty")]
+    pub global_groups: Vec<GlobalGroupXml>,
+    #[serde(rename = "globalSettings", default, skip_serializing_if = "Option::is_none")]
+    pub global_settings: Option<GlobalSettingsXml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApprovedCaXml {
+    pub name: String,
+    #[serde(rename = "authenticationOnly", default)]
+    pub authentication_only: bool,
+    #[serde(rename = "topCA")]
+    pub top_ca: TopCaXml,
+    #[serde(rename = "certificateProfileInfo", default, skip_serializing_if = "Option::is_none")]
+    pub certificate_profile_info: Option<String>,
+    #[serde(rename = "acmeServer", default, skip_serializing_if = "Option::is_none")]
+    pub acme_server: Option<AcmeServerXml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TopCaXml {
+    pub cert: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ocsp: Option<OcspXml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OcspXml {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cert: Option<String>,
+    #[serde(rename = "costType", default, skip_serializing_if = "Option::is_none")]
+    pub cost_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AcmeServerXml {
+    #[serde(rename = "directoryURL", default, skip_serializing_if = "Option::is_none")]
+    pub directory_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApprovedTsaXml {
+    pub name: String,
+    pub url: String,
+    pub cert: String,
+    #[serde(rename = "costType", default, skip_serializing_if = "Option::is_none")]
+    pub cost_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemberXml {
+    #[serde(rename = "@id")]
+    pub id: String,
+    #[serde(rename = "memberClass")]
+    pub member_class: MemberClassXml,
+    #[serde(rename = "memberCode")]
+    pub member_code: String,
+    pub name: String,
+    #[serde(rename = "subsystem", default, skip_serializing_if = "Vec::is_empty")]
+    pub subsystems: Vec<SubsystemXml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemberClassXml {
+    pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubsystemXml {
+    #[serde(rename = "@id")]
+    pub id: String,
+    #[serde(rename = "subsystemCode")]
+    pub subsystem_code: String,
+    #[serde(rename = "subsystemName", default, skip_serializing_if = "Option::is_none")]
+    pub subsystem_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SecurityServerXml {
+    pub owner: String,
+    #[serde(rename = "serverCode")]
+    pub server_code: String,
+    pub address: String,
+    #[serde(rename = "authCertHash", default, skip_serializing_if = "Vec::is_empty")]
+    pub auth_cert_hashes: Vec<String>,
+    #[serde(rename = "client", default, skip_serializing_if = "Vec::is_empty")]
+    pub clients: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GlobalGroupXml {
+    #[serde(rename = "groupCode")]
+    pub group_code: String,
+    pub description: String,
+    #[serde(rename = "groupMember", default, skip_serializing_if = "Vec::is_empty")]
+    pub group_members: Vec<GroupMemberXml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GroupMemberXml {
+    #[serde(rename = "@objectType", alias = "@ns2:objectType", default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+    #[serde(rename = "xRoadInstance", alias = "ns2:xRoadInstance")]
+    pub xroad_instance: String,
+    #[serde(rename = "memberClass", alias = "ns2:memberClass")]
+    pub member_class: String,
+    #[serde(rename = "memberCode", alias = "ns2:memberCode")]
+    pub member_code: String,
+    #[serde(rename = "subsystemCode", alias = "ns2:subsystemCode", default, skip_serializing_if = "Option::is_none")]
+    pub subsystem_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GlobalSettingsXml {
+    #[serde(rename = "ocspFreshnessSeconds", default, skip_serializing_if = "Option::is_none")]
+    pub ocsp_freshness_seconds: Option<u64>,
+}
 
 /// Model representing an Approved Certification Authority in shared-params.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,7 +198,7 @@ pub struct SharedGlobalGroup {
     pub members: Vec<ClientId>,
 }
 
-/// Complete in-memory representation of `shared-params.xml`.
+/// Complete in-memory domain representation of `shared-params.xml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SharedParams {
     pub instance_identifier: String,
@@ -73,436 +211,232 @@ pub struct SharedParams {
 }
 
 impl SharedParams {
-    /// Parses a `shared-params.xml` string into a `SharedParams` struct.
+    /// Parses a `shared-params.xml` string using `quick-xml`'s serde deserializer.
     pub fn parse_xml(xml: &str) -> XRoadResult<Self> {
-        let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        let dto: SharedParamsXml = quick_xml::de::from_str(xml)
+            .map_err(|e| XRoadError::Configuration(format!("quick-xml serde deserialization error: {e}")))?;
 
-        let mut params = SharedParams::default();
-        let mut buf = Vec::new();
+        let approved_cas = dto
+            .approved_cas
+            .into_iter()
+            .map(|ca| {
+                let top_ca_cert = decode_b64(&ca.top_ca.cert);
+                let (ocsp_url, ocsp_cert) = match ca.top_ca.ocsp {
+                    Some(ocsp) => (Some(ocsp.url), ocsp.cert.map(|c| decode_b64(&c))),
+                    None => (None, None),
+                };
 
-        // Temporary tracking states
-        let mut tag_stack: Vec<String> = Vec::new();
-        let mut current_member: Option<SharedMember> = None;
-        let mut current_subsystem: Option<SharedSubsystem> = None;
-        let mut current_sec_server: Option<SharedSecurityServer> = None;
-        let mut current_ca: Option<SharedApprovedCa> = None;
-        let mut current_tsa: Option<SharedApprovedTsa> = None;
-        let mut current_group: Option<SharedGlobalGroup> = None;
-        let mut current_group_member_instance: Option<String> = None;
-        let mut current_group_member_class: Option<String> = None;
-        let mut current_group_member_code: Option<String> = None;
-        let mut current_group_member_subsystem: Option<String> = None;
-
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    let local_tag = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
-
-                    match local_tag.as_str() {
-                        "member" => {
-                            let mut id = String::new();
-                            for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"id" {
-                                    id = String::from_utf8_lossy(&attr.value).to_string();
-                                }
-                            }
-                            current_member = Some(SharedMember {
-                                id,
-                                member_class: String::new(),
-                                member_code: String::new(),
-                                name: String::new(),
-                                subsystems: Vec::new(),
-                            });
-                        }
-                        "subsystem" => {
-                            let mut id = String::new();
-                            for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"id" {
-                                    id = String::from_utf8_lossy(&attr.value).to_string();
-                                }
-                            }
-                            current_subsystem = Some(SharedSubsystem {
-                                id,
-                                subsystem_code: String::new(),
-                                subsystem_name: None,
-                            });
-                        }
-                        "securityServer" => {
-                            current_sec_server = Some(SharedSecurityServer {
-                                owner_id: String::new(),
-                                server_code: String::new(),
-                                address: String::new(),
-                                auth_cert_hashes: Vec::new(),
-                                client_ids: Vec::new(),
-                            });
-                        }
-                        "approvedCA" => {
-                            current_ca = Some(SharedApprovedCa {
-                                name: String::new(),
-                                authentication_only: false,
-                                top_ca_cert: Vec::new(),
-                                ocsp_url: None,
-                                ocsp_cert: None,
-                                certificate_profile_info: None,
-                                acme_server_url: None,
-                            });
-                        }
-                        "approvedTSA" => {
-                            current_tsa = Some(SharedApprovedTsa {
-                                name: String::new(),
-                                url: String::new(),
-                                cert: Vec::new(),
-                            });
-                        }
-                        "globalGroup" => {
-                            current_group = Some(SharedGlobalGroup {
-                                group_code: String::new(),
-                                description: String::new(),
-                                members: Vec::new(),
-                            });
-                        }
-                        "groupMember" => {
-                            current_group_member_instance = None;
-                            current_group_member_class = None;
-                            current_group_member_code = None;
-                            current_group_member_subsystem = None;
-                        }
-                        _ => {}
-                    }
-
-                    tag_stack.push(local_tag);
+                SharedApprovedCa {
+                    name: ca.name,
+                    authentication_only: ca.authentication_only,
+                    top_ca_cert,
+                    ocsp_url,
+                    ocsp_cert,
+                    certificate_profile_info: ca.certificate_profile_info,
+                    acme_server_url: ca.acme_server.and_then(|a| a.directory_url),
                 }
-                Ok(Event::Text(ref e)) => {
-                    let text = e.unescape().unwrap_or_default().to_string();
-                    if text.is_empty() {
-                        continue;
-                    }
+            })
+            .collect();
 
-                    let parent_tag = tag_stack.last().map(|s| s.as_str()).unwrap_or("");
-                    let grand_parent_tag = if tag_stack.len() >= 2 {
-                        tag_stack.get(tag_stack.len() - 2).map(|s| s.as_str()).unwrap_or("")
-                    } else {
-                        ""
-                    };
+        let approved_tsas = dto
+            .approved_tsas
+            .into_iter()
+            .map(|tsa| SharedApprovedTsa {
+                name: tsa.name,
+                url: tsa.url,
+                cert: decode_b64(&tsa.cert),
+            })
+            .collect();
 
-                    match parent_tag {
-                        "instanceIdentifier" => {
-                            params.instance_identifier = text;
+        let members = dto
+            .members
+            .into_iter()
+            .map(|m| SharedMember {
+                id: m.id,
+                member_class: m.member_class.code,
+                member_code: m.member_code,
+                name: m.name,
+                subsystems: m
+                    .subsystems
+                    .into_iter()
+                    .map(|s| SharedSubsystem {
+                        id: s.id,
+                        subsystem_code: s.subsystem_code,
+                        subsystem_name: s.subsystem_name,
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        let security_servers = dto
+            .security_servers
+            .into_iter()
+            .map(|ss| SharedSecurityServer {
+                owner_id: ss.owner,
+                server_code: ss.server_code,
+                address: ss.address,
+                auth_cert_hashes: ss.auth_cert_hashes,
+                client_ids: ss.clients,
+            })
+            .collect();
+
+        let global_groups = dto
+            .global_groups
+            .into_iter()
+            .map(|g| {
+                let members = g
+                    .group_members
+                    .into_iter()
+                    .map(|gm| {
+                        if let Some(sub) = gm.subsystem_code {
+                            ClientId::subsystem_unchecked(
+                                gm.xroad_instance,
+                                gm.member_class,
+                                gm.member_code,
+                                sub,
+                            )
+                        } else {
+                            ClientId::member_unchecked(
+                                gm.xroad_instance,
+                                gm.member_class,
+                                gm.member_code,
+                            )
                         }
-                        "ocspFreshnessSeconds" => {
-                            params.ocsp_freshness_seconds = text.parse().ok();
-                        }
-                        // Member & Subsystem
-                        "code" if grand_parent_tag == "memberClass" => {
-                            if let Some(m) = &mut current_member {
-                                m.member_class = text;
-                            }
-                        }
-                        "memberCode" => {
-                            if let Some(m) = &mut current_member {
-                                m.member_code = text;
-                            } else if tag_stack.iter().any(|t| t == "groupMember") {
-                                current_group_member_code = Some(text);
-                            }
-                        }
-                        "name" => {
-                            if grand_parent_tag == "member" {
-                                if let Some(m) = &mut current_member {
-                                    m.name = text;
-                                }
-                            } else if grand_parent_tag == "approvedCA" {
-                                if let Some(ca) = &mut current_ca {
-                                    ca.name = text;
-                                }
-                            } else if grand_parent_tag == "approvedTSA" {
-                                if let Some(tsa) = &mut current_tsa {
-                                    tsa.name = text;
-                                }
-                            }
-                        }
-                        "subsystemCode" => {
-                            if let Some(s) = &mut current_subsystem {
-                                s.subsystem_code = text;
-                            } else if tag_stack.iter().any(|t| t == "groupMember") {
-                                current_group_member_subsystem = Some(text);
-                            }
-                        }
-                        "subsystemName" => {
-                            if let Some(s) = &mut current_subsystem {
-                                s.subsystem_name = Some(text);
-                            }
-                        }
-                        // Security Server
-                        "owner" if grand_parent_tag == "securityServer" => {
-                            if let Some(ss) = &mut current_sec_server {
-                                ss.owner_id = text;
-                            }
-                        }
-                        "serverCode" if grand_parent_tag == "securityServer" => {
-                            if let Some(ss) = &mut current_sec_server {
-                                ss.server_code = text;
-                            }
-                        }
-                        "address" if grand_parent_tag == "securityServer" => {
-                            if let Some(ss) = &mut current_sec_server {
-                                ss.address = text;
-                            }
-                        }
-                        "authCertHash" => {
-                            if let Some(ss) = &mut current_sec_server {
-                                ss.auth_cert_hashes.push(text);
-                            }
-                        }
-                        "client" if grand_parent_tag == "securityServer" => {
-                            if let Some(ss) = &mut current_sec_server {
-                                ss.client_ids.push(text);
-                            }
-                        }
-                        // CA & TSA
-                        "authenticationOnly" => {
-                            if let Some(ca) = &mut current_ca {
-                                ca.authentication_only = text.eq_ignore_ascii_case("true");
-                            }
-                        }
-                        "cert" => {
-                            let clean_text = text.replace(['\r', '\n', ' '], "");
-                            let decoded = BASE64_STANDARD.decode(&clean_text).unwrap_or_else(|_| text.as_bytes().to_vec());
-                            if grand_parent_tag == "topCA" {
-                                if let Some(ca) = &mut current_ca {
-                                    ca.top_ca_cert = decoded;
-                                }
-                            } else if grand_parent_tag == "ocsp" {
-                                if let Some(ca) = &mut current_ca {
-                                    ca.ocsp_cert = Some(decoded);
-                                }
-                            } else if grand_parent_tag == "approvedTSA" {
-                                if let Some(tsa) = &mut current_tsa {
-                                    tsa.cert = decoded;
-                                }
-                            }
-                        }
-                        "url" => {
-                            if grand_parent_tag == "ocsp" {
-                                if let Some(ca) = &mut current_ca {
-                                    ca.ocsp_url = Some(text);
-                                }
-                            } else if grand_parent_tag == "approvedTSA" {
-                                if let Some(tsa) = &mut current_tsa {
-                                    tsa.url = text;
-                                }
-                            }
-                        }
-                        "certificateProfileInfo" => {
-                            if let Some(ca) = &mut current_ca {
-                                ca.certificate_profile_info = Some(text);
-                            }
-                        }
-                        "directoryURL" => {
-                            if let Some(ca) = &mut current_ca {
-                                ca.acme_server_url = Some(text);
-                            }
-                        }
-                        // Global Group
-                        "groupCode" => {
-                            if let Some(g) = &mut current_group {
-                                g.group_code = text;
-                            }
-                        }
-                        "description" if grand_parent_tag == "globalGroup" => {
-                            if let Some(g) = &mut current_group {
-                                g.description = text;
-                            }
-                        }
-                        "xRoadInstance" => {
-                            if tag_stack.iter().any(|t| t == "groupMember") {
-                                current_group_member_instance = Some(text);
-                            }
-                        }
-                        "memberClass" if tag_stack.iter().any(|t| t == "groupMember") => {
-                            current_group_member_class = Some(text);
-                        }
-                        _ => {}
-                    }
+                    })
+                    .collect();
+
+                SharedGlobalGroup {
+                    group_code: g.group_code,
+                    description: g.description,
+                    members,
                 }
-                Ok(Event::End(ref e)) => {
-                    let local_tag = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
+            })
+            .collect();
 
-                    match local_tag.as_str() {
-                        "subsystem" => {
-                            if let (Some(sub), Some(m)) = (current_subsystem.take(), &mut current_member) {
-                                m.subsystems.push(sub);
-                            }
-                        }
-                        "member" => {
-                            if let Some(m) = current_member.take() {
-                                params.members.push(m);
-                            }
-                        }
-                        "securityServer" => {
-                            if let Some(ss) = current_sec_server.take() {
-                                params.security_servers.push(ss);
-                            }
-                        }
-                        "approvedCA" => {
-                            if let Some(ca) = current_ca.take() {
-                                params.approved_cas.push(ca);
-                            }
-                        }
-                        "approvedTSA" => {
-                            if let Some(tsa) = current_tsa.take() {
-                                params.approved_tsas.push(tsa);
-                            }
-                        }
-                        "groupMember" => {
-                            if let (Some(inst), Some(cls), Some(code)) = (
-                                current_group_member_instance.take(),
-                                current_group_member_class.take(),
-                                current_group_member_code.take(),
-                            ) {
-                                let client_id = match current_group_member_subsystem.take() {
-                                    Some(sub) => ClientId::subsystem_unchecked(inst, cls, code, sub),
-                                    None => ClientId::member_unchecked(inst, cls, code),
-                                };
-                                if let Some(g) = &mut current_group {
-                                    g.members.push(client_id);
-                                }
-                            }
-                        }
-                        "globalGroup" => {
-                            if let Some(g) = current_group.take() {
-                                params.global_groups.push(g);
-                            }
-                        }
-                        _ => {}
-                    }
+        let ocsp_freshness_seconds = dto
+            .global_settings
+            .and_then(|gs| gs.ocsp_freshness_seconds);
 
-                    tag_stack.pop();
-                }
-                Ok(Event::Eof) => break,
-                Err(e) => return Err(XRoadError::Configuration(format!("XML parse error: {e}"))),
-                _ => {}
-            }
-            buf.clear();
-        }
-
-        Ok(params)
+        Ok(SharedParams {
+            instance_identifier: dto.instance_identifier,
+            approved_cas,
+            approved_tsas,
+            members,
+            security_servers,
+            global_groups,
+            ocsp_freshness_seconds,
+        })
     }
 
-    /// Serializes the `SharedParams` into a standard X-Road `shared-params.xml` string.
+    /// Serializes `SharedParams` into XML using `quick-xml`'s serde serializer.
     pub fn to_xml(&self) -> String {
-        let mut out = String::new();
-        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-        out.push_str("<ns3:conf xmlns:ns2=\"http://x-road.eu/xsd/identifiers\" xmlns:ns3=\"http://x-road.eu/xsd/xroad.xsd\">\n");
-        out.push_str(&format!("    <instanceIdentifier>{}</instanceIdentifier>\n", self.instance_identifier));
+        let dto = SharedParamsXml {
+            ns2: Some("http://x-road.eu/xsd/identifiers".to_string()),
+            ns3: Some("http://x-road.eu/xsd/xroad.xsd".to_string()),
+            instance_identifier: self.instance_identifier.clone(),
+            approved_cas: self
+                .approved_cas
+                .iter()
+                .map(|ca| ApprovedCaXml {
+                    name: ca.name.clone(),
+                    authentication_only: ca.authentication_only,
+                    top_ca: TopCaXml {
+                        cert: BASE64_STANDARD.encode(&ca.top_ca_cert),
+                        ocsp: ca.ocsp_url.as_ref().map(|url| OcspXml {
+                            url: url.clone(),
+                            cert: ca.ocsp_cert.as_ref().map(|c| BASE64_STANDARD.encode(c)),
+                            cost_type: Some("FREE".to_string()),
+                        }),
+                    },
+                    certificate_profile_info: ca.certificate_profile_info.clone(),
+                    acme_server: ca.acme_server_url.as_ref().map(|url| AcmeServerXml {
+                        directory_url: Some(url.clone()),
+                    }),
+                })
+                .collect(),
+            approved_tsas: self
+                .approved_tsas
+                .iter()
+                .map(|tsa| ApprovedTsaXml {
+                    name: tsa.name.clone(),
+                    url: tsa.url.clone(),
+                    cert: BASE64_STANDARD.encode(&tsa.cert),
+                    cost_type: Some("FREE".to_string()),
+                })
+                .collect(),
+            members: self
+                .members
+                .iter()
+                .map(|m| MemberXml {
+                    id: m.id.clone(),
+                    member_class: MemberClassXml {
+                        code: m.member_class.clone(),
+                        description: None,
+                    },
+                    member_code: m.member_code.clone(),
+                    name: m.name.clone(),
+                    subsystems: m
+                        .subsystems
+                        .iter()
+                        .map(|s| SubsystemXml {
+                            id: s.id.clone(),
+                            subsystem_code: s.subsystem_code.clone(),
+                            subsystem_name: s.subsystem_name.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            security_servers: self
+                .security_servers
+                .iter()
+                .map(|ss| SecurityServerXml {
+                    owner: ss.owner_id.clone(),
+                    server_code: ss.server_code.clone(),
+                    address: ss.address.clone(),
+                    auth_cert_hashes: ss.auth_cert_hashes.clone(),
+                    clients: ss.client_ids.clone(),
+                })
+                .collect(),
+            global_groups: self
+                .global_groups
+                .iter()
+                .map(|g| GlobalGroupXml {
+                    group_code: g.group_code.clone(),
+                    description: g.description.clone(),
+                    group_members: g
+                        .members
+                        .iter()
+                        .map(|m| GroupMemberXml {
+                            object_type: Some(
+                                if m.subsystem_code.is_some() {
+                                    "SUBSYSTEM".to_string()
+                                } else {
+                                    "MEMBER".to_string()
+                                },
+                            ),
+                            xroad_instance: m.xroad_instance.clone(),
+                            member_class: m.member_class.clone(),
+                            member_code: m.member_code.clone(),
+                            subsystem_code: m.subsystem_code.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            global_settings: self
+                .ocsp_freshness_seconds
+                .map(|sec| GlobalSettingsXml {
+                    ocsp_freshness_seconds: Some(sec),
+                }),
+        };
 
-        // Approved CAs
-        for ca in &self.approved_cas {
-            out.push_str("    <approvedCA>\n");
-            out.push_str(&format!("        <name>{}</name>\n", escape_xml(&ca.name)));
-            out.push_str(&format!("        <authenticationOnly>{}</authenticationOnly>\n", ca.authentication_only));
-            out.push_str("        <topCA>\n");
-            out.push_str(&format!("            <cert>{}</cert>\n", BASE64_STANDARD.encode(&ca.top_ca_cert)));
-            if let Some(ocsp_url) = &ca.ocsp_url {
-                out.push_str("            <ocsp>\n");
-                out.push_str(&format!("                <url>{}</url>\n", escape_xml(ocsp_url)));
-                if let Some(cert) = &ca.ocsp_cert {
-                    out.push_str(&format!("                <cert>{}</cert>\n", BASE64_STANDARD.encode(cert)));
-                }
-                out.push_str("                <costType>FREE</costType>\n");
-                out.push_str("            </ocsp>\n");
-            }
-            out.push_str("        </topCA>\n");
-            if let Some(profile) = &ca.certificate_profile_info {
-                out.push_str(&format!("        <certificateProfileInfo>{}</certificateProfileInfo>\n", escape_xml(profile)));
-            }
-            if let Some(acme) = &ca.acme_server_url {
-                out.push_str("        <acmeServer>\n");
-                out.push_str(&format!("            <directoryURL>{}</directoryURL>\n", escape_xml(acme)));
-                out.push_str("        </acmeServer>\n");
-            }
-            out.push_str("    </approvedCA>\n");
-        }
-
-        // Approved TSAs
-        for tsa in &self.approved_tsas {
-            out.push_str("    <approvedTSA>\n");
-            out.push_str(&format!("        <name>{}</name>\n", escape_xml(&tsa.name)));
-            out.push_str(&format!("        <url>{}</url>\n", escape_xml(&tsa.url)));
-            out.push_str(&format!("        <cert>{}</cert>\n", BASE64_STANDARD.encode(&tsa.cert)));
-            out.push_str("        <costType>FREE</costType>\n");
-            out.push_str("    </approvedTSA>\n");
-        }
-
-        // Members
-        for m in &self.members {
-            out.push_str(&format!("    <member id=\"{}\">\n", escape_xml(&m.id)));
-            out.push_str("        <memberClass>\n");
-            out.push_str(&format!("            <code>{}</code>\n", escape_xml(&m.member_class)));
-            out.push_str("        </memberClass>\n");
-            out.push_str(&format!("        <memberCode>{}</memberCode>\n", escape_xml(&m.member_code)));
-            out.push_str(&format!("        <name>{}</name>\n", escape_xml(&m.name)));
-            for sub in &m.subsystems {
-                out.push_str(&format!("        <subsystem id=\"{}\">\n", escape_xml(&sub.id)));
-                out.push_str(&format!("            <subsystemCode>{}</subsystemCode>\n", escape_xml(&sub.subsystem_code)));
-                if let Some(sub_name) = &sub.subsystem_name {
-                    out.push_str(&format!("            <subsystemName>{}</subsystemName>\n", escape_xml(sub_name)));
-                }
-                out.push_str("        </subsystem>\n");
-            }
-            out.push_str("    </member>\n");
-        }
-
-        // Security Servers
-        for ss in &self.security_servers {
-            out.push_str("    <securityServer>\n");
-            out.push_str(&format!("        <owner>{}</owner>\n", escape_xml(&ss.owner_id)));
-            out.push_str(&format!("        <serverCode>{}</serverCode>\n", escape_xml(&ss.server_code)));
-            out.push_str(&format!("        <address>{}</address>\n", escape_xml(&ss.address)));
-            for hash in &ss.auth_cert_hashes {
-                out.push_str(&format!("        <authCertHash>{}</authCertHash>\n", escape_xml(hash)));
-            }
-            for client_ref in &ss.client_ids {
-                out.push_str(&format!("        <client>{}</client>\n", escape_xml(client_ref)));
-            }
-            out.push_str("    </securityServer>\n");
-        }
-
-        // Global Groups
-        for g in &self.global_groups {
-            out.push_str("    <globalGroup>\n");
-            out.push_str(&format!("        <groupCode>{}</groupCode>\n", escape_xml(&g.group_code)));
-            out.push_str(&format!("        <description>{}</description>\n", escape_xml(&g.description)));
-            for member in &g.members {
-                let obj_type = if member.subsystem_code.is_some() { "SUBSYSTEM" } else { "MEMBER" };
-                out.push_str(&format!("        <groupMember ns2:objectType=\"{}\">\n", obj_type));
-                out.push_str(&format!("            <ns2:xRoadInstance>{}</ns2:xRoadInstance>\n", escape_xml(&member.xroad_instance)));
-                out.push_str(&format!("            <ns2:memberClass>{}</ns2:memberClass>\n", escape_xml(&member.member_class)));
-                out.push_str(&format!("            <ns2:memberCode>{}</ns2:memberCode>\n", escape_xml(&member.member_code)));
-                if let Some(sub) = &member.subsystem_code {
-                    out.push_str(&format!("            <ns2:subsystemCode>{}</ns2:subsystemCode>\n", escape_xml(sub)));
-                }
-                out.push_str("        </groupMember>\n");
-            }
-            out.push_str("    </globalGroup>\n");
-        }
-
-        // Global Settings
-        out.push_str("    <globalSettings>\n");
-        if let Some(sec) = self.ocsp_freshness_seconds {
-            out.push_str(&format!("        <ocspFreshnessSeconds>{}</ocspFreshnessSeconds>\n", sec));
-        }
-        out.push_str("    </globalSettings>\n");
-
-        out.push_str("</ns3:conf>\n");
+        let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+        let body = quick_xml::se::to_string(&dto).unwrap_or_default();
+        out.push_str(&body);
         out
     }
 }
 
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+fn decode_b64(s: &str) -> Vec<u8> {
+    let clean = s.replace(['\r', '\n', ' '], "");
+    BASE64_STANDARD.decode(&clean).unwrap_or_else(|_| s.as_bytes().to_vec())
 }

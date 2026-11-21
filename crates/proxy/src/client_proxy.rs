@@ -1,7 +1,7 @@
 use common::headers;
 use globalconf::GlobalConf;
 use identifiers::{ClientId, ServiceId};
-use message::XRoadHeaders;
+use message::{SoapEnvelopeXml, XRoadHeaders};
 use messagelog::{MessageLogDb, NewLogRecord};
 use poem::{
     EndpointExt, Request, Response, Route, handler,
@@ -101,12 +101,75 @@ pub async fn handle_client_request(
         }
     }
 
+    let body_bytes = body.into_bytes().await.map_err(poem::error::BadRequest)?;
+    let content_type = req
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let is_xml = content_type.contains("xml")
+        || body_bytes.starts_with(b"<?xml")
+        || body_bytes.starts_with(b"<SOAP-ENV:")
+        || body_bytes.starts_with(b"<soapenv:");
+
     let parsed_headers = match XRoadHeaders::from_http_headers(&header_map) {
         Ok(h) => h,
         Err(e) => {
             let path = req.uri().path();
             if let Some(h) = parse_headers_from_rest_path(path, &header_map) {
                 h
+            } else if is_xml {
+                if let Ok(xml_str) = std::str::from_utf8(&body_bytes) {
+                    if let Ok(soap_envelope) = SoapEnvelopeXml::from_xml(xml_str) {
+                        match soap_envelope.to_xroad_headers() {
+                            Ok(h) => h,
+                            Err(e2) => {
+                                return Ok(Response::builder()
+                                    .status(StatusCode::BAD_REQUEST)
+                                    .content_type("text/xml; charset=utf-8")
+                                    .body(
+                                        SoapEnvelopeXml::new_fault(
+                                            None,
+                                            "SOAP-ENV:Client",
+                                            "Client.InvalidHeaders",
+                                            Some(&e2.to_string()),
+                                        )
+                                        .to_xml()
+                                        .unwrap_or_default(),
+                                    ));
+                            }
+                        }
+                    } else {
+                        return Ok(Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .content_type("text/xml; charset=utf-8")
+                            .body(
+                                SoapEnvelopeXml::new_fault(
+                                    None,
+                                    "SOAP-ENV:Client",
+                                    "Client.InvalidMessage",
+                                    Some("Malformed SOAP XML message"),
+                                )
+                                .to_xml()
+                                .unwrap_or_default(),
+                            ));
+                    }
+                } else {
+                    return Ok(Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .content_type("text/xml; charset=utf-8")
+                        .body(
+                            SoapEnvelopeXml::new_fault(
+                                None,
+                                "SOAP-ENV:Client",
+                                "Client.InvalidMessage",
+                                Some("Invalid UTF-8 payload"),
+                            )
+                            .to_xml()
+                            .unwrap_or_default(),
+                        ));
+                }
             } else {
                 return Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
@@ -126,12 +189,42 @@ pub async fn handle_client_request(
     {
         Ok(true) => {}
         Ok(false) => {
+            if is_xml {
+                return Ok(Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .content_type("text/xml; charset=utf-8")
+                    .body(
+                        SoapEnvelopeXml::new_fault(
+                            Some(&parsed_headers),
+                            "SOAP-ENV:Client",
+                            "Client.AccessDenied",
+                            Some("Client not authorized on this security server"),
+                        )
+                        .to_xml()
+                        .unwrap_or_default(),
+                    ));
+            }
             return Ok(Response::builder()
                 .status(StatusCode::FORBIDDEN)
                 .content_type("application/json")
                 .body(r#"{"faultCode":"Client.AccessDenied","faultString":"Client not authorized on this security server"}"#));
         }
         Err(e) => {
+            if is_xml {
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .content_type("text/xml; charset=utf-8")
+                    .body(
+                        SoapEnvelopeXml::new_fault(
+                            Some(&parsed_headers),
+                            "SOAP-ENV:Server",
+                            "Server.InternalError",
+                            Some(&e.to_string()),
+                        )
+                        .to_xml()
+                        .unwrap_or_default(),
+                    ));
+            }
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .content_type("application/json")
@@ -141,7 +234,6 @@ pub async fn handle_client_request(
         }
     }
 
-    let body_bytes = body.into_bytes().await.map_err(poem::error::BadRequest)?;
     let message_hash = format!("{:x}", Sha256::digest(&body_bytes));
     let query_id = parsed_headers.id.clone();
 
@@ -161,7 +253,7 @@ pub async fn handle_client_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: "REST".to_string(),
+            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
             message_hash,
             signature_hash: None,
             message_body: String::from_utf8(body_bytes.to_vec()).ok(),
