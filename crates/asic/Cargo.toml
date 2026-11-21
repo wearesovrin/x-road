@@ -9,7 +9,11 @@ repository.workspace = true
 [dependencies]
 common.workspace = true
 zip.workspace = true
-quick-xml.workspace = true
+quick-xml = { workspace = true, features = ["serialize"] }
+serde.workspace = true
+sha2.workspace = true
+chrono.workspace = true
+base64.workspace = true
 thiserror.workspace = true
 clap.workspace = true
 

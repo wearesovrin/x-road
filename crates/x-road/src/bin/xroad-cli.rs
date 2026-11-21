@@ -98,13 +98,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let data = fs::read(file)?;
                 let container = AsicContainer::unpack(&data)?;
                 println!(
-                    "ASiC-e message size: {} bytes",
-                    container.message_data.len()
+                    "ASiC-e payload files: {}",
+                    container.files.len()
                 );
-                println!(
-                    "ASiC-e signature size: {} bytes",
-                    container.signature_data.len()
-                );
+                if let Some(msg) = container.message_data() {
+                    println!("ASiC-e message size: {} bytes", msg.len());
+                }
+                if let Some(sig) = container.signature_data() {
+                    println!("ASiC-e signature size: {} bytes", sig.len());
+                }
             }
         },
     }

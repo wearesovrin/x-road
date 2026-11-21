@@ -47,14 +47,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Inspect { file } => {
             let data = fs::read(file)?;
             let container = AsicContainer::unpack(&data)?;
-            println!(
-                "ASiC-e message size: {} bytes",
-                container.message_data.len()
-            );
-            println!(
-                "ASiC-e signature size: {} bytes",
-                container.signature_data.len()
-            );
+            println!("ASiC-e Container inspection:");
+            println!("- Payload files: {}", container.files.len());
+            for f in &container.files {
+                println!("  * {} ({} bytes, mime: {})", f.name, f.content.len(), f.mime_type);
+            }
+            println!("- Signatures: {}", container.signatures.len());
+            println!("- Timestamp present: {}", container.timestamp_data.is_some());
+            println!("- Manifest valid: {}", container.verify_integrity().is_ok());
         }
     }
 

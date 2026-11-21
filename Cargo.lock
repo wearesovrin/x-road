@@ -300,9 +300,13 @@ dependencies = [
 name = "asic"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "chrono",
  "clap",
  "common",
  "quick-xml 0.37.5",
+ "serde",
+ "sha2 0.10.9",
  "thiserror",
  "zip",
 ]
