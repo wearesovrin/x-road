@@ -602,6 +602,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "common",
+ "globalconf",
  "identifiers",
  "poem",
  "poem-openapi",
@@ -737,14 +738,16 @@ dependencies = [
 name = "confclient"
 version = "0.1.0"
 dependencies = [
+ "central-server",
  "chrono",
  "common",
  "globalconf",
+ "identifiers",
+ "poem",
  "reqwest",
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1333,9 +1336,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 name = "globalconf"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "common",
- "crypto",
  "identifiers",
  "quick-xml 0.37.5",
  "serde",
@@ -1730,11 +1733,13 @@ dependencies = [
 name = "identity"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "common",
  "identifiers",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
  "tonic",
 ]
 
@@ -3599,13 +3604,15 @@ name = "signer"
 version = "0.1.0"
 dependencies = [
  "common",
- "crypto",
  "proto",
+ "rcgen",
+ "ring",
+ "sha2 0.10.9",
  "thiserror",
  "tokio",
  "tonic",
  "tracing",
- "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -4865,6 +4872,7 @@ dependencies = [
  "acme",
  "asic",
  "central-server",
+ "chrono",
  "clap",
  "common",
  "confclient",

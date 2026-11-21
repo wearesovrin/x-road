@@ -11,5 +11,7 @@ common.workspace = true
 identifiers.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+chrono.workspace = true
+tokio.workspace = true
 tonic.workspace = true
 thiserror.workspace = true

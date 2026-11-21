@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 common.workspace = true
 identifiers.workspace = true
+globalconf.workspace = true
 tokio.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true

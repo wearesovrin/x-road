@@ -64,6 +64,9 @@ pub enum XRoadError {
     #[error("Database error: {0}")]
     Database(String),
 
+    #[error("Network error: {0}")]
+    Network(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

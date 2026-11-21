@@ -2,11 +2,35 @@ pub mod db;
 pub mod entities;
 pub mod migration;
 
-use poem::{Route, Server, listener::TcpListener};
+use poem::{
+    EndpointExt, Response, Route, Server, get, handler, http::StatusCode, listener::TcpListener,
+    web::Data,
+};
 use poem_openapi::{Object, OpenApi, OpenApiService, payload::Json};
 
 pub use db::CentralServerDb;
 pub use migration::Migrator;
+
+#[derive(Clone)]
+pub struct CentralServerState {
+    pub instance_id: String,
+    pub db: CentralServerDb,
+}
+
+#[handler]
+async fn handle_shared_params_xml(
+    Data(state): Data<&CentralServerState>,
+) -> poem::Result<Response> {
+    let xml = state
+        .db
+        .generate_shared_params_xml(&state.instance_id)
+        .await
+        .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR))?;
+
+    Ok(Response::builder()
+        .content_type("application/xml")
+        .body(xml))
+}
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
 pub struct CentralServerInfo {
@@ -39,16 +63,33 @@ impl CentralServerApi {
 }
 
 pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
+    let state = CentralServerState {
+        instance_id: instance_id.clone(),
+        db: db.clone(),
+    };
+
     let api_service = OpenApiService::new(
-        CentralServerApi { instance_id, db },
+        CentralServerApi {
+            instance_id: instance_id.clone(),
+            db: db.clone(),
+        },
         "X-Road Central Server Admin API",
         "0.1.0",
     )
     .server("/api");
     let ui = api_service.swagger_ui();
+
     Route::new()
         .nest("/api", api_service)
         .nest("/swagger-ui", ui)
+        .at(
+            "/internalconf/shared-params.xml",
+            get(handle_shared_params_xml).data(state.clone()),
+        )
+        .at(
+            "/api/v1/globalconf/shared-params.xml",
+            get(handle_shared_params_xml).data(state),
+        )
 }
 
 /// Launches the Central Server administration and configuration service on the given address.
@@ -137,5 +178,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(tsa.name, "TestTSA");
+
+        // 6. Generate shared-params.xml and verify with GlobalConf
+        let xml = db.generate_shared_params_xml("DEV").await.unwrap();
+        assert!(xml.contains("<instanceIdentifier>DEV</instanceIdentifier>"));
+        assert!(xml.contains("Acme Corp"));
+        assert!(xml.contains("MANAGEMENT"));
+        assert!(xml.contains("SS1"));
+
+        let conf = globalconf::GlobalConf::from_shared_params_xml(&xml).unwrap();
+        assert_eq!(conf.instance_identifier, "DEV");
+        assert!(conf.is_member_registered(&client));
+        assert!(conf.is_member_in_group(&client, "security-officers"));
+        assert_eq!(conf.approved_cas.len(), 1);
+        assert_eq!(conf.approved_tsps.len(), 1);
     }
 }
