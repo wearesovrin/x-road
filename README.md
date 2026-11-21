@@ -76,7 +76,7 @@ The workspace consists of **18 modular member crates** located under `crates/`:
 | [`serverconf`](crates/serverconf) | 1 | `lib:serverconf-core`, `-impl` | Local Security Server configuration abstractions (`ServerConfProvider`), access rights evaluation, and database models backed by **SeaORM 2.0** (`sea-orm` & `sea-orm-migration`). |
 | [`asic`](crates/asic) | 1 | `lib:asic-core`, `tool:asic-*` | Associated Signature Containers (ASiC-e RFC 3161 / ETSI TS 102 918) packaging, unpacking, and bundled standalone `asic-tool` CLI binary. |
 | [`messagelog`](crates/messagelog) | 1 | `lib:messagelog-core` | Tamper-evident transaction logging and Freudenthal batch tree hashing (`BatchHasher`) for computing root verification hashes prior to timestamping. |
-| [`acme`](crates/acme) | 1 | `lib:acme-core` | ACME (RFC 8555) automated TLS and signing certificate lifecycle management models and challenge states. |
+| [`acme`](crates/acme) | 1 | `lib:acme-core` | ACME (RFC 8555) automated TLS, authentication, and signing certificate lifecycle management backed by **`instant-acme`** with raw CSR submission and HTTP-01 challenge fulfillment. |
 | [`identity`](crates/identity) | 2 | `service:ds-*`, `lib:ds-*` | Sovrin / W3C Decentralized Identifiers (DIDs), Verifiable Credentials (VCs), and `IdentityResolver` trait for European Data Spaces / EDC integration. |
 | [`signer`](crates/signer) | 3 | `service:signer` | Signer gRPC service library implementing `KeyService` and `SignService` for software tokens and PKCS#11 hardware security modules (HSM). |
 | [`confclient`](crates/confclient) | 3 | `service:configuration-client` | Configuration client library for fetching, verifying digital signatures, and applying signed global configuration files from central servers. |
