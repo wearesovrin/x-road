@@ -12,7 +12,33 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Start the Security Server Proxy daemon
+    /// Start the complete unified Security Server node (Admin API, Client Proxy, Server Proxy)
+    #[command(alias = "security-server", alias = "admin", alias = "Admin")]
+    SecurityServer {
+        #[arg(long, env = "ADMIN_BIND_ADDR", default_value = "0.0.0.0:4000")]
+        admin_bind: String,
+        #[arg(long, env = "CLIENT_PROXY_BIND_ADDR", default_value = "0.0.0.0:8000")]
+        client_proxy_bind: String,
+        #[arg(long, env = "SERVER_PROXY_BIND_ADDR", default_value = "0.0.0.0:8443")]
+        server_proxy_bind: String,
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: Option<String>,
+        #[arg(long, env = "MESSAGELOG_DATABASE_URL")]
+        messagelog_database_url: Option<String>,
+        #[arg(long, env = "DEFAULT_SERVER_PROXY_URL")]
+        default_server_proxy_url: Option<String>,
+    },
+    /// Start the Central Server daemon (OpenAPI Management & Global Configuration distribution)
+    #[command(alias = "central-server", alias = "central", alias = "Central")]
+    CentralServer {
+        #[arg(short, long, env = "BIND_ADDR", default_value = "0.0.0.0:4001")]
+        bind: String,
+        #[arg(short, long, env = "XROAD_INSTANCE", default_value = "DEV")]
+        instance: String,
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: Option<String>,
+    },
+    /// Start the standalone Security Server Client Proxy daemon
     Proxy {
         #[arg(short, long, default_value = "127.0.0.1:8000")]
         bind: String,
@@ -36,18 +62,6 @@ enum Commands {
         #[arg(short, long, default_value = "127.0.0.1:50052")]
         bind: String,
     },
-    /// Start the Security Server node (Admin API, Client Proxy, Server Proxy)
-    Admin {
-        #[arg(short, long, default_value = "127.0.0.1:4000")]
-        bind: String,
-    },
-    /// Start the Central Server daemon
-    Central {
-        #[arg(short, long, default_value = "127.0.0.1:8000")]
-        bind: String,
-        #[arg(short, long, default_value = "DEV")]
-        instance: String,
-    },
 }
 
 #[tokio::main]
@@ -56,6 +70,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::SecurityServer {
+            admin_bind,
+            client_proxy_bind,
+            server_proxy_bind,
+            database_url,
+            messagelog_database_url,
+            default_server_proxy_url,
+        } => {
+            let config = security_server::SecurityServerConfig {
+                admin_bind,
+                client_proxy_bind,
+                server_proxy_bind,
+                database_url,
+                messagelog_database_url,
+                default_server_proxy_url,
+            };
+            security_server::run_security_server(config).await?;
+        }
+        Commands::CentralServer {
+            bind,
+            instance,
+            database_url,
+        } => {
+            let db_url = database_url.or_else(|| std::env::var("DATABASE_URL").ok());
+            central_server::run_central_server(&bind, &instance, db_url.as_deref()).await?;
+        }
         Commands::Proxy { bind, client } => {
             let client_id = client
                 .parse::<ClientId>()
@@ -79,15 +119,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         Commands::Monitor { bind } => {
             monitor::run_monitor(&bind).await?;
-        }
-        Commands::Admin { bind } => {
-            let mut config = security_server::SecurityServerConfig::default();
-            config.admin_bind = bind;
-            security_server::run_security_server(config).await?;
-        }
-        Commands::Central { bind, instance } => {
-            let db_url = std::env::var("DATABASE_URL").ok();
-            central_server::run_central_server(&bind, &instance, db_url.as_deref()).await?;
         }
     }
 

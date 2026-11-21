@@ -38,6 +38,84 @@ pub enum Commands {
         #[command(subcommand)]
         action: AsicAction,
     },
+    /// Security Server Admin API operations
+    #[command(alias = "ss")]
+    SecurityServer {
+        #[command(subcommand)]
+        action: SecurityServerAction,
+    },
+    /// Central Server management operations
+    #[command(alias = "cs")]
+    CentralServer {
+        #[command(subcommand)]
+        action: CentralServerAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SecurityServerAction {
+    /// List all registered clients on the Security Server
+    ListClients {
+        #[arg(short, long, default_value = "http://127.0.0.1:4000")]
+        endpoint: String,
+    },
+    /// Register a new client on the Security Server
+    AddClient {
+        #[arg(short, long, default_value = "http://127.0.0.1:4000")]
+        endpoint: String,
+        #[arg(short, long)]
+        client: String,
+        #[arg(long, default_value_t = false)]
+        is_owner: bool,
+    },
+    /// Query Security Server operational status
+    Status {
+        #[arg(short, long, default_value = "http://127.0.0.1:4000")]
+        endpoint: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CentralServerAction {
+    /// Query Central Server operational status
+    Status {
+        #[arg(short, long, default_value = "http://127.0.0.1:4001")]
+        endpoint: String,
+    },
+    /// List all registered X-Road members
+    ListMembers {
+        #[arg(short, long, default_value = "http://127.0.0.1:4001")]
+        endpoint: String,
+    },
+    /// Register a new X-Road member
+    AddMember {
+        #[arg(short, long, default_value = "http://127.0.0.1:4001")]
+        endpoint: String,
+        #[arg(long)]
+        member_class: String,
+        #[arg(long)]
+        member_code: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "admin@example.org")]
+        contact: String,
+    },
+    /// List all registered Security Servers
+    ListServers {
+        #[arg(short, long, default_value = "http://127.0.0.1:4001")]
+        endpoint: String,
+    },
+    /// Register a new Security Server
+    AddServer {
+        #[arg(short, long, default_value = "http://127.0.0.1:4001")]
+        endpoint: String,
+        #[arg(long)]
+        owner_id: i64,
+        #[arg(long)]
+        server_code: String,
+        #[arg(long)]
+        address: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -191,6 +269,101 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             }
         },
+        Commands::SecurityServer { action } => {
+            let client = reqwest::Client::new();
+            match action {
+                SecurityServerAction::Status { endpoint } => {
+                    let resp = client.get(format!("{endpoint}/api/v1/status")).send().await?;
+                    let status: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&status)?);
+                }
+                SecurityServerAction::ListClients { endpoint } => {
+                    let resp = client.get(format!("{endpoint}/api/v1/clients")).send().await?;
+                    let clients: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&clients)?);
+                }
+                SecurityServerAction::AddClient {
+                    endpoint,
+                    client: client_str,
+                    is_owner,
+                } => {
+                    let body = serde_json::json!({
+                        "client_id": client_str,
+                        "is_owner": is_owner,
+                    });
+                    let resp = client
+                        .post(format!("{endpoint}/api/v1/clients"))
+                        .json(&body)
+                        .send()
+                        .await?;
+                    let res: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                }
+            }
+        }
+        Commands::CentralServer { action } => {
+            let client = reqwest::Client::new();
+            match action {
+                CentralServerAction::Status { endpoint } => {
+                    let resp = client.get(format!("{endpoint}/api/v1/status")).send().await?;
+                    let status: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&status)?);
+                }
+                CentralServerAction::ListMembers { endpoint } => {
+                    let resp = client.get(format!("{endpoint}/api/v1/members")).send().await?;
+                    let members: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&members)?);
+                }
+                CentralServerAction::AddMember {
+                    endpoint,
+                    member_class,
+                    member_code,
+                    name,
+                    contact,
+                } => {
+                    let body = serde_json::json!({
+                        "member_class": member_class,
+                        "member_code": member_code,
+                        "name": name,
+                        "administrative_contact": contact,
+                    });
+                    let resp = client
+                        .post(format!("{endpoint}/api/v1/members"))
+                        .json(&body)
+                        .send()
+                        .await?;
+                    let res: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                }
+                CentralServerAction::ListServers { endpoint } => {
+                    let resp = client
+                        .get(format!("{endpoint}/api/v1/security-servers"))
+                        .send()
+                        .await?;
+                    let servers: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&servers)?);
+                }
+                CentralServerAction::AddServer {
+                    endpoint,
+                    owner_id,
+                    server_code,
+                    address,
+                } => {
+                    let body = serde_json::json!({
+                        "owner_id": owner_id,
+                        "server_code": server_code,
+                        "address": address,
+                    });
+                    let resp = client
+                        .post(format!("{endpoint}/api/v1/security-servers"))
+                        .json(&body)
+                        .send()
+                        .await?;
+                    let res: serde_json::Value = resp.json().await?;
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                }
+            }
+        }
     }
 
     Ok(())

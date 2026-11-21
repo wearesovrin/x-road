@@ -30,6 +30,8 @@ confclient.workspace = true
 monitor.workspace = true
 security-server.workspace = true
 central-server.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 
 [[bin]]
 name = "x-road"

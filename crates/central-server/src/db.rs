@@ -262,6 +262,14 @@ impl CentralServerDb {
         .map_err(|e| XRoadError::Database(format!("Failed to add approved CA: {e}")))
     }
 
+    /// Lists all Approved Certification Authorities.
+    pub async fn list_approved_cas(&self) -> XRoadResult<Vec<approved_ca::Model>> {
+        approved_ca::Entity::find()
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to list approved CAs: {e}")))
+    }
+
     /// Registers an Approved Time-Stamping Authority (TSA).
     pub async fn add_approved_tsa(
         &self,
@@ -279,6 +287,14 @@ impl CentralServerDb {
         .insert(self.raw_connection())
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to add approved TSA: {e}")))
+    }
+
+    /// Lists all Approved Time-Stamping Authorities.
+    pub async fn list_approved_tsas(&self) -> XRoadResult<Vec<approved_tsa::Model>> {
+        approved_tsa::Entity::find()
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to list approved TSAs: {e}")))
     }
 
     /// Exports database entities into the standard `SharedParams` model.

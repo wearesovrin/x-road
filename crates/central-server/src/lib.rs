@@ -6,7 +6,11 @@ use poem::{
     EndpointExt, Response, Route, Server, get, handler, http::StatusCode, listener::TcpListener,
     web::Data,
 };
-use poem_openapi::{Object, OpenApi, OpenApiService, payload::Json};
+use poem_openapi::{
+    Object, OpenApi, OpenApiService,
+    param::Path,
+    payload::Json,
+};
 
 pub use db::CentralServerDb;
 pub use migration::Migrator;
@@ -40,6 +44,106 @@ pub struct CentralServerInfo {
     pub security_server_count: usize,
 }
 
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct MemberDto {
+    pub id: i64,
+    pub instance: String,
+    pub member_class: String,
+    pub member_code: String,
+    pub name: String,
+    pub administrative_contact: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddMemberRequest {
+    pub member_class: String,
+    pub member_code: String,
+    pub name: String,
+    pub administrative_contact: Option<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct SubsystemDto {
+    pub id: i64,
+    pub member_id: i64,
+    pub subsystem_code: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddSubsystemRequest {
+    pub subsystem_code: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct SecurityServerDto {
+    pub id: i64,
+    pub owner_id: i64,
+    pub server_code: String,
+    pub address: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct RegisterSecurityServerRequest {
+    pub owner_id: i64,
+    pub server_code: String,
+    pub address: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct LinkClientRequest {
+    pub security_server_id: i64,
+    pub client_id_str: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ApprovedCaDto {
+    pub id: i64,
+    pub name: String,
+    pub authentication_only: bool,
+    pub cert_profile_info: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddCaRequest {
+    pub name: String,
+    pub top_ca_cert_pem: String,
+    pub authentication_only: bool,
+    pub cert_profile_info: Option<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ApprovedTsaDto {
+    pub id: i64,
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddTsaRequest {
+    pub name: String,
+    pub url: String,
+    pub cert_pem: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct GlobalGroupDto {
+    pub group_code: String,
+    pub description: String,
+    pub member_count: usize,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct CreateGlobalGroupRequest {
+    pub group_code: String,
+    pub description: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddGroupMemberRequest {
+    pub group_code: String,
+    pub client_id_str: String,
+}
+
 pub struct CentralServerApi {
     pub instance_id: String,
     pub db: CentralServerDb,
@@ -48,8 +152,8 @@ pub struct CentralServerApi {
 #[OpenApi]
 impl CentralServerApi {
     /// Returns the Central Server operational status and counts.
-    #[oai(path = "/internalconf", method = "get")]
-    async fn internal_conf(&self) -> Json<CentralServerInfo> {
+    #[oai(path = "/v1/status", method = "get")]
+    async fn status(&self) -> Json<CentralServerInfo> {
         let members = self.db.list_members().await.unwrap_or_default();
         let servers = self.db.list_security_servers().await.unwrap_or_default();
 
@@ -59,6 +163,215 @@ impl CentralServerApi {
             member_count: members.len(),
             security_server_count: servers.len(),
         })
+    }
+
+    /// Lists all registered X-Road members.
+    #[oai(path = "/v1/members", method = "get")]
+    async fn list_members(&self) -> Json<Vec<MemberDto>> {
+        let members = self.db.list_members().await.unwrap_or_default();
+        let dtos = members
+            .into_iter()
+            .map(|m| MemberDto {
+                id: m.id,
+                instance: m.xroad_instance,
+                member_class: m.member_class,
+                member_code: m.member_code,
+                name: m.name,
+                administrative_contact: m.administrative_contact,
+            })
+            .collect();
+        Json(dtos)
+    }
+
+    /// Registers a new X-Road member.
+    #[oai(path = "/v1/members", method = "post")]
+    async fn add_member(&self, body: Json<AddMemberRequest>) -> poem::Result<Json<MemberDto>> {
+        let req = body.0;
+        let member = self
+            .db
+            .add_member(
+                &self.instance_id,
+                &req.member_class,
+                &req.member_code,
+                &req.name,
+                req.administrative_contact.as_deref(),
+            )
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(MemberDto {
+            id: member.id,
+            instance: member.xroad_instance,
+            member_class: member.member_class,
+            member_code: member.member_code,
+            name: member.name,
+            administrative_contact: member.administrative_contact,
+        }))
+    }
+
+    /// Lists all subsystems belonging to a member.
+    #[oai(path = "/v1/members/:member_id/subsystems", method = "get")]
+    async fn list_subsystems(&self, member_id: Path<i64>) -> poem::Result<Json<Vec<SubsystemDto>>> {
+        let subs = self
+            .db
+            .list_subsystems(member_id.0)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR))?;
+
+        let dtos = subs
+            .into_iter()
+            .map(|s| SubsystemDto {
+                id: s.id,
+                member_id: s.member_id,
+                subsystem_code: s.subsystem_code,
+            })
+            .collect();
+        Ok(Json(dtos))
+    }
+
+    /// Adds a subsystem to a member.
+    #[oai(path = "/v1/members/:member_id/subsystems", method = "post")]
+    async fn add_subsystem(
+        &self,
+        member_id: Path<i64>,
+        body: Json<AddSubsystemRequest>,
+    ) -> poem::Result<Json<SubsystemDto>> {
+        let sub = self
+            .db
+            .add_subsystem(member_id.0, &body.0.subsystem_code)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(SubsystemDto {
+            id: sub.id,
+            member_id: sub.member_id,
+            subsystem_code: sub.subsystem_code,
+        }))
+    }
+
+    /// Lists all registered Security Servers.
+    #[oai(path = "/v1/security-servers", method = "get")]
+    async fn list_security_servers(&self) -> Json<Vec<SecurityServerDto>> {
+        let servers = self.db.list_security_servers().await.unwrap_or_default();
+        let dtos = servers
+            .into_iter()
+            .map(|s| SecurityServerDto {
+                id: s.id,
+                owner_id: s.owner_id,
+                server_code: s.server_code,
+                address: s.address,
+            })
+            .collect();
+        Json(dtos)
+    }
+
+    /// Registers a new Security Server.
+    #[oai(path = "/v1/security-servers", method = "post")]
+    async fn register_security_server(
+        &self,
+        body: Json<RegisterSecurityServerRequest>,
+    ) -> poem::Result<Json<SecurityServerDto>> {
+        let req = body.0;
+        let server = self
+            .db
+            .register_security_server(req.owner_id, &req.server_code, &req.address)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(SecurityServerDto {
+            id: server.id,
+            owner_id: server.owner_id,
+            server_code: server.server_code,
+            address: server.address,
+        }))
+    }
+
+    /// Links an X-Road client to a Security Server.
+    #[oai(path = "/v1/security-servers/client", method = "post")]
+    async fn link_client(&self, body: Json<LinkClientRequest>) -> poem::Result<Json<bool>> {
+        let req = body.0;
+        let client_id: identifiers::ClientId = req
+            .client_id_str
+            .parse()
+            .map_err(|e| poem::Error::from_string(format!("Invalid ClientId: {e}"), StatusCode::BAD_REQUEST))?;
+
+        self.db
+            .add_security_server_client(req.security_server_id, &client_id)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(true))
+    }
+
+    /// Lists Approved Certification Authorities (CAs).
+    #[oai(path = "/v1/cas", method = "get")]
+    async fn list_cas(&self) -> Json<Vec<ApprovedCaDto>> {
+        let cas = self.db.list_approved_cas().await.unwrap_or_default();
+        let dtos = cas
+            .into_iter()
+            .map(|ca| ApprovedCaDto {
+                id: ca.id,
+                name: ca.name,
+                authentication_only: ca.authentication_only,
+                cert_profile_info: ca.cert_profile_info,
+            })
+            .collect();
+        Json(dtos)
+    }
+
+    /// Registers an Approved CA.
+    #[oai(path = "/v1/cas", method = "post")]
+    async fn add_ca(&self, body: Json<AddCaRequest>) -> poem::Result<Json<ApprovedCaDto>> {
+        let req = body.0;
+        let ca = self
+            .db
+            .add_approved_ca(
+                &req.name,
+                req.top_ca_cert_pem.as_bytes(),
+                req.authentication_only,
+                req.cert_profile_info.as_deref(),
+            )
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(ApprovedCaDto {
+            id: ca.id,
+            name: ca.name,
+            authentication_only: ca.authentication_only,
+            cert_profile_info: ca.cert_profile_info,
+        }))
+    }
+
+    /// Lists Approved Time-Stamping Authorities (TSAs).
+    #[oai(path = "/v1/tsas", method = "get")]
+    async fn list_tsas(&self) -> Json<Vec<ApprovedTsaDto>> {
+        let tsas = self.db.list_approved_tsas().await.unwrap_or_default();
+        let dtos = tsas
+            .into_iter()
+            .map(|t| ApprovedTsaDto {
+                id: t.id,
+                name: t.name,
+                url: t.url,
+            })
+            .collect();
+        Json(dtos)
+    }
+
+    /// Registers an Approved TSA.
+    #[oai(path = "/v1/tsas", method = "post")]
+    async fn add_tsa(&self, body: Json<AddTsaRequest>) -> poem::Result<Json<ApprovedTsaDto>> {
+        let req = body.0;
+        let tsa = self
+            .db
+            .add_approved_tsa(&req.name, &req.url, req.cert_pem.as_bytes())
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(ApprovedTsaDto {
+            id: tsa.id,
+            name: tsa.name,
+            url: tsa.url,
+        }))
     }
 }
 

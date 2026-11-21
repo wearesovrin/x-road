@@ -606,9 +606,11 @@ dependencies = [
  "identifiers",
  "poem",
  "poem-openapi",
+ "reqwest",
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
@@ -727,7 +729,6 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
- "serde",
  "strum",
  "thiserror",
 ]
@@ -2146,7 +2147,6 @@ name = "monitor"
 version = "0.1.0"
 dependencies = [
  "proto",
- "thiserror",
  "tokio",
  "tonic",
  "tracing",
@@ -4878,7 +4878,9 @@ dependencies = [
  "monitor",
  "proto",
  "proxy",
+ "reqwest",
  "security-server",
+ "serde_json",
  "serverconf",
  "signer",
  "tokio",
