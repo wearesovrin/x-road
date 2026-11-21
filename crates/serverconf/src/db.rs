@@ -291,8 +291,23 @@ impl ServerConfProvider for DatabaseServerConf {
         let service_id_str = service_id.to_string();
         let client_id_str = client_id.to_string();
 
+        let mut cond = sea_orm::sea_query::Condition::any()
+            .add(access_right::Column::ServiceIdStr.eq(&service_id_str));
+
+        if service_id.service_version.is_none() {
+            cond = cond.add(access_right::Column::ServiceIdStr.starts_with(format!("{service_id_str}/")));
+        } else {
+            let without_version = ServiceId::new_unchecked(
+                service_id.client.clone(),
+                &service_id.service_code,
+                None::<&str>,
+            )
+            .to_string();
+            cond = cond.add(access_right::Column::ServiceIdStr.eq(without_version));
+        }
+
         let count = access_right::Entity::find()
-            .filter(access_right::Column::ServiceIdStr.eq(service_id_str))
+            .filter(cond)
             .filter(access_right::Column::SubjectClientIdStr.eq(client_id_str))
             .count(self.raw_connection())
             .await

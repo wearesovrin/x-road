@@ -2706,13 +2706,18 @@ dependencies = [
  "hyper-util",
  "identifiers",
  "message",
+ "messagelog",
  "poem",
- "proto",
+ "reqwest",
+ "serde",
+ "serde_json",
  "serverconf",
+ "sha2 0.10.9",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -3404,15 +3409,25 @@ dependencies = [
 name = "security-server"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "chrono",
  "common",
+ "globalconf",
+ "identifiers",
+ "message",
+ "messagelog",
  "poem",
  "poem-openapi",
+ "proxy",
+ "reqwest",
  "serde",
+ "serde_json",
  "serverconf",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

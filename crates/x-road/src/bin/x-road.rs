@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use identifiers::ClientId;
+use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "x-road")]
@@ -13,7 +14,7 @@ struct Cli {
 enum Commands {
     /// Start the Security Server Proxy daemon
     Proxy {
-        #[arg(short, long, default_value = "127.0.0.1:8080")]
+        #[arg(short, long, default_value = "127.0.0.1:8000")]
         bind: String,
         #[arg(short, long, default_value = "DEV/COM/12345678")]
         client: String,
@@ -35,7 +36,7 @@ enum Commands {
         #[arg(short, long, default_value = "127.0.0.1:50052")]
         bind: String,
     },
-    /// Start the Security Server REST administration API
+    /// Start the Security Server node (Admin API, Client Proxy, Server Proxy)
     Admin {
         #[arg(short, long, default_value = "127.0.0.1:4000")]
         bind: String,
@@ -59,7 +60,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let client_id = client
                 .parse::<ClientId>()
                 .unwrap_or_else(|_| ClientId::member_unchecked("DEV", "COM", "12345678"));
-            proxy::run_client_proxy(&bind, client_id).await?;
+            let db_url = std::env::var("DATABASE_URL").ok();
+            let server_conf = match db_url.as_deref() {
+                Some(url) => Arc::new(serverconf::DatabaseServerConf::connect(url).await?),
+                None => Arc::new(serverconf::DatabaseServerConf::connect_in_memory().await?),
+            };
+            let _ = server_conf.add_client(&client_id, false).await;
+            let message_log = Arc::new(messagelog::MessageLogDb::connect_in_memory().await?);
+            let global_conf = Arc::new(globalconf::GlobalConf::new("DEV"));
+            let state = proxy::ClientProxyState::new(server_conf, message_log, global_conf);
+            proxy::run_client_proxy(&bind, state).await?;
         }
         Commands::Signer { bind } => {
             signer::run_signer(&bind).await?;
@@ -71,8 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             monitor::run_monitor(&bind).await?;
         }
         Commands::Admin { bind } => {
-            let db_url = std::env::var("DATABASE_URL").ok();
-            security_server::run_admin_api(&bind, db_url.as_deref()).await?;
+            let mut config = security_server::SecurityServerConfig::default();
+            config.admin_bind = bind;
+            security_server::run_security_server(config).await?;
         }
         Commands::Central { bind, instance } => {
             let db_url = std::env::var("DATABASE_URL").ok();
