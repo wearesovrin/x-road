@@ -1,0 +1,39 @@
+[package]
+name = "x-road"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tonic.workspace = true
+common.workspace = true
+identifiers.workspace = true
+crypto.workspace = true
+message.workspace = true
+proto.workspace = true
+globalconf.workspace = true
+serverconf.workspace = true
+asic.workspace = true
+messagelog.workspace = true
+acme.workspace = true
+identity.workspace = true
+proxy.workspace = true
+signer.workspace = true
+confclient.workspace = true
+monitor.workspace = true
+security-server.workspace = true
+central-server.workspace = true
+
+[[bin]]
+name = "x-road"
+path = "src/bin/x-road.rs"
+
+[[bin]]
+name = "xroad-cli"
+path = "src/bin/xroad-cli.rs"

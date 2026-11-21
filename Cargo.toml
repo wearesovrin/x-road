@@ -1,0 +1,78 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Sovrin OÜ <info@sovrin.ee>", "X-Road Rust Contributors"]
+license = "MIT"
+repository = "https://github.com/wearesovrin/x-road"
+
+[workspace.dependencies]
+# Async Runtime & Networking
+tokio = { version = "1.43", features = ["full"] }
+axum = { version = "0.8", features = ["macros", "multipart"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
+hyper = { version = "1.6", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart", "json"] }
+
+# gRPC & Protobuf
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+tonic-build = "0.12"
+
+# Cryptography, PKI & TLS
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+rcgen = "0.13"
+x509-parser = "0.17"
+ring = "0.17"
+sha2 = "0.10"
+cryptoki = "0.7"
+
+# Serialization, Parsing & Formats
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+quick-xml = { version = "0.37", features = ["serialize"] }
+base64 = "0.22"
+mime = "0.3"
+uuid = { version = "1.13", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+# Database & Migrations
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "sqlite", "chrono", "uuid", "macros"] }
+
+# Diagnostics, Observability & CLI
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+thiserror = "2.0"
+anyhow = "1.0"
+poem = "3.1"
+poem-openapi = { version = "5.1", features = ["swagger-ui"] }
+
+# Internal Crate References
+common = { path = "crates/common", version = "0.1.0" }
+identifiers = { path = "crates/identifiers", version = "0.1.0" }
+crypto = { path = "crates/crypto", version = "0.1.0" }
+message = { path = "crates/message", version = "0.1.0" }
+proto = { path = "crates/proto", version = "0.1.0" }
+globalconf = { path = "crates/globalconf", version = "0.1.0" }
+serverconf = { path = "crates/serverconf", version = "0.1.0" }
+asic = { path = "crates/asic", version = "0.1.0" }
+messagelog = { path = "crates/messagelog", version = "0.1.0" }
+acme = { path = "crates/acme", version = "0.1.0" }
+identity = { path = "crates/identity", version = "0.1.0" }
+signer = { path = "crates/signer", version = "0.1.0" }
+confclient = { path = "crates/confclient", version = "0.1.0" }
+proxy = { path = "crates/proxy", version = "0.1.0" }
+monitor = { path = "crates/monitor", version = "0.1.0" }
+security-server = { path = "crates/security-server", version = "0.1.0" }
+central-server = { path = "crates/central-server", version = "0.1.0" }

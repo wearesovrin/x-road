@@ -1,0 +1,18 @@
+[package]
+name = "asic"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+common.workspace = true
+zip.workspace = true
+quick-xml.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+
+[[bin]]
+name = "asic-tool"
+path = "src/bin/asic-tool.rs"

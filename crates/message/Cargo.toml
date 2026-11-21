@@ -1,0 +1,15 @@
+[package]
+name = "message"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+common.workspace = true
+identifiers.workspace = true
+quick-xml.workspace = true
+serde.workspace = true
+uuid.workspace = true
+thiserror.workspace = true

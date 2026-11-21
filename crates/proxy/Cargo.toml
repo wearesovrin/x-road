@@ -1,0 +1,23 @@
+[package]
+name = "proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+common.workspace = true
+identifiers.workspace = true
+message.workspace = true
+globalconf.workspace = true
+serverconf.workspace = true
+crypto.workspace = true
+proto.workspace = true
+tokio.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+axum.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true

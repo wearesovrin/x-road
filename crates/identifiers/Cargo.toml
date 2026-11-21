@@ -1,0 +1,12 @@
+[package]
+name = "identifiers"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+common.workspace = true
+serde.workspace = true
+thiserror.workspace = true

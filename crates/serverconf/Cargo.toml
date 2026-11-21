@@ -1,0 +1,15 @@
+[package]
+name = "serverconf"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+common.workspace = true
+identifiers.workspace = true
+sqlx.workspace = true
+tonic.workspace = true
+serde.workspace = true
+thiserror.workspace = true
