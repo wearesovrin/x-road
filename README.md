@@ -73,17 +73,17 @@ The workspace consists of **18 modular member crates** located under `crates/`:
 | [`message`](crates/message) | 0 | `common:common-message` | Ingestion, validation, and serialization of X-Road HTTP/REST headers (`x-road-client`, `x-road-service`, etc.), SOAP envelopes, and MIME multipart descriptors. |
 | [`proto`](crates/proto) | 1 | `lib:rpc-core`, proto schemas | Unified Protocol Buffer compilation via `tonic-build` providing gRPC client and server stubs for all 10 X-Road internal services under `package xroad`. |
 | [`globalconf`](crates/globalconf) | 1 | `lib:globalconf-core`, `-impl` | Global configuration anchor parsing (`ConfigurationAnchor`), instance discovery, and thread-safe in-memory cache registry (`GlobalConf`). |
-| [`serverconf`](crates/serverconf) | 1 | `lib:serverconf-core`, `-impl` | Local Security Server configuration abstractions (`ServerConfProvider`), access rights evaluation, and mock/database configuration fixtures. |
+| [`serverconf`](crates/serverconf) | 1 | `lib:serverconf-core`, `-impl` | Local Security Server configuration abstractions (`ServerConfProvider`), access rights evaluation, and database models backed by **SeaORM 2.0** (`sea-orm` & `sea-orm-migration`). |
 | [`asic`](crates/asic) | 1 | `lib:asic-core`, `tool:asic-*` | Associated Signature Containers (ASiC-e RFC 3161 / ETSI TS 102 918) packaging, unpacking, and bundled standalone `asic-tool` CLI binary. |
 | [`messagelog`](crates/messagelog) | 1 | `lib:messagelog-core` | Tamper-evident transaction logging and Freudenthal batch tree hashing (`BatchHasher`) for computing root verification hashes prior to timestamping. |
 | [`acme`](crates/acme) | 1 | `lib:acme-core` | ACME (RFC 8555) automated TLS and signing certificate lifecycle management models and challenge states. |
 | [`identity`](crates/identity) | 2 | `service:ds-*`, `lib:ds-*` | Sovrin / W3C Decentralized Identifiers (DIDs), Verifiable Credentials (VCs), and `IdentityResolver` trait for European Data Spaces / EDC integration. |
 | [`signer`](crates/signer) | 3 | `service:signer` | Signer gRPC service library implementing `KeyService` and `SignService` for software tokens and PKCS#11 hardware security modules (HSM). |
 | [`confclient`](crates/confclient) | 3 | `service:configuration-client` | Configuration client library for fetching, verifying digital signatures, and applying signed global configuration files from central servers. |
-| [`proxy`](crates/proxy) | 3 | `service:proxy` | High-performance message exchange proxy engine with Axum HTTP routing pipeline, header translation, and access control verification. |
+| [`proxy`](crates/proxy) | 3 | `service:proxy` | High-performance message exchange proxy engine with Poem HTTP routing pipeline, header translation, and access control verification. |
 | [`monitor`](crates/monitor) | 3 | `service:monitor`, `op-monitor` | Environmental metrics collector (CPU, memory, disk) and gRPC telemetry service library (`MonitorService`). |
 | [`security-server`](crates/security-server) | 3 | `security-server:admin-service` | Security Server Administration REST API engine with Poem and interactive OpenAPI documentation (`poem` + `poem-openapi` with Swagger UI). |
-| [`central-server`](crates/central-server) | 3 | `central-server:admin-service` | Central Server administrative engine for member directory management and global configuration distribution. |
+| [`central-server`](crates/central-server) | 3 | `central-server:admin-service` | Central Server administrative and configuration service with Poem and OpenAPI (`poem` + `poem-openapi`). |
 | [`x-road`](crates/x-road) | 4 | Root facade & tools | Umbrella facade crate re-exporting all core modules and housing **multiple binaries**: the unified daemon node launcher (`x-road`) and the operator CLI (`xroad-cli`). |
 
 ---
@@ -150,6 +150,27 @@ cargo test --workspace
 ```bash
 cargo fmt --check
 cargo clippy --workspace
+```
+
+---
+
+## Docker & Container Registry (GHCR)
+
+The repository provides a multi-stage [Dockerfile](Dockerfile) and GitHub Actions workflow ([.github/workflows/docker.yml](.github/workflows/docker.yml)) that publishes production images to GitHub Container Registry (`ghcr.io`):
+
+| Image | Target | Description |
+| :--- | :--- | :--- |
+| `ghcr.io/wearesovrin/xroad-security-server` | `security-server` | Security Server daemon with Poem OpenAPI Admin UI & Proxy |
+| `ghcr.io/wearesovrin/xroad-central-server` | `central-server` | Central Server configuration & management service |
+
+### Building Locally
+
+```bash
+# Build Security Server container
+docker build --target security-server -t ghcr.io/wearesovrin/xroad-security-server:latest .
+
+# Build Central Server container
+docker build --target central-server -t ghcr.io/wearesovrin/xroad-central-server:latest .
 ```
 
 ---

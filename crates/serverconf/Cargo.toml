@@ -9,7 +9,9 @@ repository.workspace = true
 [dependencies]
 common.workspace = true
 identifiers.workspace = true
-sqlx.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
 tonic.workspace = true
 serde.workspace = true
+strum.workspace = true
 thiserror.workspace = true

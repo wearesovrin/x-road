@@ -2,6 +2,7 @@ use common::XRoadResult;
 use identifiers::{ClientId, ServiceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
 /// Service description representing either REST or SOAP services.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,7 +13,21 @@ pub struct ServiceDescription {
     pub services: Vec<ServiceId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+    AsRefStr,
+    IntoStaticStr,
+)]
+#[strum(ascii_case_insensitive, serialize_all = "UPPERCASE")]
+#[serde(rename_all = "UPPERCASE")]
 pub enum ServiceType {
     Rest,
     Soap,

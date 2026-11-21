@@ -9,4 +9,9 @@ repository.workspace = true
 [dependencies]
 common.workspace = true
 serde.workspace = true
+quick-xml.workspace = true
+strum.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

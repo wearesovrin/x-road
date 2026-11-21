@@ -1,27 +1,21 @@
+use strum::{AsRefStr, Display};
 use thiserror::Error;
 
 /// Result type for X-Road operations.
 pub type XRoadResult<T> = Result<T, XRoadError>;
 
 /// Standard X-Road fault codes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, AsRefStr)]
 pub enum FaultCode {
+    #[strum(to_string = "{0}")]
     Client(String),
+    #[strum(to_string = "{0}")]
     Server(String),
 }
 
 impl FaultCode {
     pub fn as_str(&self) -> &str {
-        match self {
-            FaultCode::Client(s) => s.as_str(),
-            FaultCode::Server(s) => s.as_str(),
-        }
-    }
-}
-
-impl std::fmt::Display for FaultCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
+        self.as_ref()
     }
 }
 
@@ -30,6 +24,9 @@ impl std::fmt::Display for FaultCode {
 pub enum XRoadError {
     #[error("Identifier parse error: {0}")]
     IdentifierParse(String),
+
+    #[error("Identifier validation error: {0}")]
+    IdentifierValidation(String),
 
     #[error("Configuration error: {0}")]
     Configuration(String),

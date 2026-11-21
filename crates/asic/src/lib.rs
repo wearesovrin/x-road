@@ -72,7 +72,8 @@ impl AsicContainer {
             let mut file = archive
                 .by_index(i)
                 .map_err(|e| XRoadError::Asic(e.to_string()))?;
-            match file.name() {
+            let name = file.name().map_err(|e| XRoadError::Asic(e.to_string()))?;
+            match name.as_ref() {
                 "message.xml" => {
                     file.read_to_end(&mut message_data)
                         .map_err(|e| XRoadError::Asic(e.to_string()))?;

@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::Proxy { bind, client } => {
             let client_id = client
                 .parse::<ClientId>()
-                .unwrap_or_else(|_| ClientId::member("DEV", "COM", "12345678"));
+                .unwrap_or_else(|_| ClientId::member_unchecked("DEV", "COM", "12345678"));
             proxy::run_client_proxy(&bind, client_id).await?;
         }
         Commands::Signer { bind } => {

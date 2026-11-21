@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/monitor_service.proto",
     ];
 
-    tonic_build::configure().compile_protos(&protos, &["proto"])?;
+    tonic_prost_build::configure().compile_protos(&protos, &["proto"])?;
 
     Ok(())
 }

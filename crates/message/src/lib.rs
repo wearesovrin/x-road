@@ -110,8 +110,8 @@ mod tests {
 
     #[test]
     fn test_headers_roundtrip() {
-        let client = ClientId::subsystem("DEV", "COM", "111", "sub1");
-        let service = ServiceId::new(client.clone(), "testService", Some("v1"));
+        let client = ClientId::subsystem("DEV", "COM", "111", "sub1").unwrap();
+        let service = ServiceId::new(client.clone(), "testService", Some("v1")).unwrap();
         let headers = XRoadHeaders::new(client, service);
 
         let http_headers = headers.to_http_headers();

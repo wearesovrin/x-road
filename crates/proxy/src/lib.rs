@@ -1,13 +1,11 @@
-use axum::{
-    Router,
-    body::Bytes,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    routing::post,
-};
 use identifiers::ClientId;
 use message::XRoadHeaders;
+use poem::{
+    EndpointExt, Request, Response, Route, Server, handler,
+    http::StatusCode,
+    listener::TcpListener,
+    web::Data,
+};
 use serverconf::ServerConfProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,20 +17,14 @@ pub struct ProxyState {
     pub client_id: ClientId,
 }
 
-/// Client Proxy router handling inbound requests from local Information Systems.
-pub fn client_proxy_router(state: ProxyState) -> Router {
-    Router::new()
-        .route("/", post(handle_client_request))
-        .with_state(state)
-}
-
+#[handler]
 async fn handle_client_request(
-    State(state): State<ProxyState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+    state: Data<&ProxyState>,
+    req: &Request,
+    body: poem::Body,
+) -> poem::Result<Response> {
     let mut header_map = HashMap::new();
-    for (k, v) in headers.iter() {
+    for (k, v) in req.headers().iter() {
         if let Ok(v_str) = v.to_str() {
             header_map.insert(k.as_str().to_string(), v_str.to_string());
         }
@@ -41,7 +33,9 @@ async fn handle_client_request(
     let parsed_headers = match XRoadHeaders::from_http_headers(&header_map) {
         Ok(h) => h,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("Protocol error: {}", e)).into_response();
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(format!("Protocol error: {}", e)));
         }
     };
 
@@ -52,19 +46,35 @@ async fn handle_client_request(
         .await
     {
         Ok(true) => {}
-        Ok(false) => return (StatusCode::FORBIDDEN, "Client not authorized").into_response(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Ok(false) => {
+            return Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body("Client not authorized"));
+        }
+        Err(e) => {
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(e.to_string()));
+        }
     }
+
+    let body_bytes = body.into_bytes().await.map_err(poem::error::BadRequest)?;
 
     tracing::info!(
         query_id = %parsed_headers.id,
         client = %parsed_headers.client,
         service = %parsed_headers.service,
-        payload_bytes = body.len(),
+        payload_bytes = body_bytes.len(),
         "Processing X-Road request"
     );
 
-    (StatusCode::OK, "X-Road Response OK").into_response()
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .body("X-Road Response OK"))
+}
+
+pub fn client_proxy_app(state: ProxyState) -> Route {
+    Route::new().at("/", poem::post(handle_client_request).data(state))
 }
 
 /// Launches the client proxy service on the given address.
@@ -84,8 +94,7 @@ pub async fn run_client_proxy(
         client_id,
     };
 
-    let app = client_proxy_router(state);
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    axum::serve(listener, app).await?;
+    let app = client_proxy_app(state);
+    Server::new(TcpListener::bind(bind_addr)).run(app).await?;
     Ok(())
 }

@@ -1,269 +1,225 @@
-use common::{XRoadError, XRoadResult};
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::str::FromStr;
+pub mod central_service_id;
+pub mod client_id;
+pub mod group_id;
+pub mod id_trait;
+pub mod object_type;
+pub mod server_id;
+pub mod service_id;
+pub mod validator;
+pub mod xml;
 
-/// X-Road Object Type indicating the hierarchy of an identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum XRoadObjectType {
-    Server,
-    Service,
-    Member,
-    Subsystem,
-    GlobalGroup,
-    LocalGroup,
-    CentralService,
-}
+pub use central_service_id::CentralServiceId;
+pub use client_id::ClientId;
+pub use group_id::{GlobalGroupId, LocalGroupId};
+pub use id_trait::XRoadId;
+pub use object_type::XRoadObjectType;
+pub use server_id::SecurityServerId;
+pub use service_id::ServiceId;
+pub use validator::{MAX_IDENTIFIER_PART_LENGTH, StrictIdentifierValidator};
+pub use xml::{
+    XROAD_IDENTIFIERS_NS, XRoadClientIdentifierType, XRoadSecurityServerIdentifierType,
+    XRoadServiceIdentifierType,
+};
 
-/// Identifies an X-Road client (either a Member or a Subsystem within a Member).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ClientId {
-    pub xroad_instance: String,
-    pub member_class: String,
-    pub member_code: String,
-    pub subsystem_code: Option<String>,
-}
-
-impl ClientId {
-    pub fn member(
-        instance: impl Into<String>,
-        class: impl Into<String>,
-        code: impl Into<String>,
-    ) -> Self {
-        Self {
-            xroad_instance: instance.into(),
-            member_class: class.into(),
-            member_code: code.into(),
-            subsystem_code: None,
-        }
-    }
-
-    pub fn subsystem(
-        instance: impl Into<String>,
-        class: impl Into<String>,
-        code: impl Into<String>,
-        subsystem: impl Into<String>,
-    ) -> Self {
-        Self {
-            xroad_instance: instance.into(),
-            member_class: class.into(),
-            member_code: code.into(),
-            subsystem_code: Some(subsystem.into()),
-        }
-    }
-
-    pub fn object_type(&self) -> XRoadObjectType {
-        if self.subsystem_code.is_some() {
-            XRoadObjectType::Subsystem
-        } else {
-            XRoadObjectType::Member
-        }
-    }
-}
-
-impl fmt::Display for ClientId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}/{}/{}",
-            self.xroad_instance, self.member_class, self.member_code
-        )?;
-        if let Some(sub) = &self.subsystem_code {
-            write!(f, "/{}", sub)?;
-        }
-        Ok(())
-    }
-}
-
-impl FromStr for ClientId {
-    type Err = XRoadError;
-
-    fn from_str(s: &str) -> XRoadResult<Self> {
-        let parts: Vec<&str> = s.split('/').collect();
-        match parts.len() {
-            3 => Ok(ClientId::member(parts[0], parts[1], parts[2])),
-            4 => Ok(ClientId::subsystem(parts[0], parts[1], parts[2], parts[3])),
-            _ => Err(XRoadError::IdentifierParse(format!(
-                "Invalid ClientId string format '{}', expected 3 or 4 slash-separated parts",
-                s
-            ))),
-        }
-    }
-}
-
-/// Identifies an X-Road service.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ServiceId {
-    pub client: ClientId,
-    pub service_code: String,
-    pub service_version: Option<String>,
-}
-
-impl ServiceId {
-    pub fn new(
-        client: ClientId,
-        service_code: impl Into<String>,
-        service_version: Option<impl Into<String>>,
-    ) -> Self {
-        Self {
-            client,
-            service_code: service_code.into(),
-            service_version: service_version.map(Into::into),
-        }
-    }
-}
-
-impl fmt::Display for ServiceId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{}", self.client, self.service_code)?;
-        if let Some(ver) = &self.service_version {
-            write!(f, "/{}", ver)?;
-        }
-        Ok(())
-    }
-}
-
-impl FromStr for ServiceId {
-    type Err = XRoadError;
-
-    fn from_str(s: &str) -> XRoadResult<Self> {
-        let parts: Vec<&str> = s.split('/').collect();
-        match parts.len() {
-            4 => {
-                let client = ClientId::member(parts[0], parts[1], parts[2]);
-                Ok(ServiceId {
-                    client,
-                    service_code: parts[3].to_string(),
-                    service_version: None,
-                })
-            }
-            5 => {
-                let client = ClientId::subsystem(parts[0], parts[1], parts[2], parts[3]);
-                Ok(ServiceId {
-                    client,
-                    service_code: parts[4].to_string(),
-                    service_version: None,
-                })
-            }
-            6 => {
-                let client = ClientId::subsystem(parts[0], parts[1], parts[2], parts[3]);
-                Ok(ServiceId {
-                    client,
-                    service_code: parts[4].to_string(),
-                    service_version: Some(parts[5].to_string()),
-                })
-            }
-            _ => Err(XRoadError::IdentifierParse(format!(
-                "Invalid ServiceId format '{}', expected 4 to 6 slash-separated parts",
-                s
-            ))),
-        }
-    }
-}
-
-/// Identifies an X-Road Security Server.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SecurityServerId {
-    pub xroad_instance: String,
-    pub member_class: String,
-    pub member_code: String,
-    pub server_code: String,
-}
-
-impl SecurityServerId {
-    pub fn new(
-        instance: impl Into<String>,
-        class: impl Into<String>,
-        code: impl Into<String>,
-        server: impl Into<String>,
-    ) -> Self {
-        Self {
-            xroad_instance: instance.into(),
-            member_class: class.into(),
-            member_code: code.into(),
-            server_code: server.into(),
-        }
-    }
-}
-
-impl fmt::Display for SecurityServerId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}/{}/{}/{}",
-            self.xroad_instance, self.member_class, self.member_code, self.server_code
-        )
-    }
-}
-
-impl FromStr for SecurityServerId {
-    type Err = XRoadError;
-
-    fn from_str(s: &str) -> XRoadResult<Self> {
-        let parts: Vec<&str> = s.split('/').collect();
-        if parts.len() == 4 {
-            Ok(SecurityServerId::new(
-                parts[0], parts[1], parts[2], parts[3],
-            ))
-        } else {
-            Err(XRoadError::IdentifierParse(format!(
-                "Invalid SecurityServerId format '{}', expected 4 slash-separated parts",
-                s
-            )))
-        }
-    }
-}
-
-/// Identifies an X-Road Global Group.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct GlobalGroupId {
-    pub xroad_instance: String,
-    pub group_code: String,
-}
-
-impl fmt::Display for GlobalGroupId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{}", self.xroad_instance, self.group_code)
-    }
-}
+// Re-export common result and error
+pub use common::{XRoadError, XRoadResult};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_client_id_parsing_and_display() {
-        let member_str = "DEV/COM/12345678";
-        let member_id: ClientId = member_str.parse().unwrap();
-        assert_eq!(member_id.xroad_instance, "DEV");
-        assert_eq!(member_id.member_class, "COM");
-        assert_eq!(member_id.member_code, "12345678");
-        assert_eq!(member_id.subsystem_code, None);
-        assert_eq!(member_id.object_type(), XRoadObjectType::Member);
-        assert_eq!(member_id.to_string(), member_str);
+    fn test_strict_identifier_validator() {
+        // Valid strings
+        assert!(StrictIdentifierValidator::is_valid("EE"));
+        assert!(StrictIdentifierValidator::is_valid("COM"));
+        assert!(StrictIdentifierValidator::is_valid("12345678"));
+        assert!(StrictIdentifierValidator::is_valid("subsystem-1"));
+        assert!(StrictIdentifierValidator::is_valid("getInvoices.v1"));
+        assert!(StrictIdentifierValidator::is_valid("test'()+,.-=?"));
 
-        let sub_str = "DEV/COM/12345678/billing";
-        let sub_id: ClientId = sub_str.parse().unwrap();
-        assert_eq!(sub_id.subsystem_code.as_deref(), Some("billing"));
-        assert_eq!(sub_id.object_type(), XRoadObjectType::Subsystem);
-        assert_eq!(sub_id.to_string(), sub_str);
+        // Invalid characters
+        assert!(!StrictIdentifierValidator::is_valid(""));
+        assert!(!StrictIdentifierValidator::is_valid("has space"));
+        assert!(!StrictIdentifierValidator::is_valid("slash/part"));
+        assert!(!StrictIdentifierValidator::is_valid("colon:part"));
+        assert!(!StrictIdentifierValidator::is_valid("percent%"));
+        assert!(!StrictIdentifierValidator::is_valid("ampersand&"));
+        assert!(!StrictIdentifierValidator::is_valid("unicode_ö"));
+
+        // Length limit (255 max)
+        let exact_255 = "a".repeat(255);
+        let overflow_256 = "a".repeat(256);
+        assert!(StrictIdentifierValidator::is_valid(&exact_255));
+        assert!(!StrictIdentifierValidator::is_valid(&overflow_256));
+
+        assert!(StrictIdentifierValidator::validate_part("test", &exact_255).is_ok());
+        assert!(StrictIdentifierValidator::validate_part("test", &overflow_256).is_err());
     }
 
     #[test]
-    fn test_service_id_parsing_and_display() {
-        let svc_str = "DEV/COM/12345678/billing/getInvoices/v1";
-        let svc_id: ServiceId = svc_str.parse().unwrap();
-        assert_eq!(svc_id.client.subsystem_code.as_deref(), Some("billing"));
-        assert_eq!(svc_id.service_code, "getInvoices");
-        assert_eq!(svc_id.service_version.as_deref(), Some("v1"));
-        assert_eq!(svc_id.to_string(), svc_str);
+    fn test_client_id_member_and_subsystem() {
+        let member = ClientId::member("EE", "COM", "12345678").unwrap();
+        assert_eq!(member.object_type(), XRoadObjectType::Member);
+        assert!(member.is_member());
+        assert!(!member.is_subsystem());
+        assert_eq!(member.to_string(), "EE/COM/12345678");
+        assert_eq!(member.to_encoded_id(true), "MEMBER:EE/COM/12345678");
+
+        let subsystem = ClientId::subsystem("EE", "COM", "12345678", "accounting").unwrap();
+        assert_eq!(subsystem.object_type(), XRoadObjectType::Subsystem);
+        assert!(!subsystem.is_member());
+        assert!(subsystem.is_subsystem());
+        assert_eq!(subsystem.to_string(), "EE/COM/12345678/accounting");
+        assert_eq!(
+            subsystem.to_encoded_id(true),
+            "SUBSYSTEM:EE/COM/12345678/accounting"
+        );
+
+        // member_id() of subsystem extracts parent member
+        assert_eq!(subsystem.member_id(), member);
+    }
+
+    #[test]
+    fn test_client_id_member_equals_and_subsystem_contains() {
+        let member = ClientId::member("EE", "COM", "12345678").unwrap();
+        let sub1 = ClientId::subsystem("EE", "COM", "12345678", "accounting").unwrap();
+        let sub2 = ClientId::subsystem("EE", "COM", "12345678", "hr").unwrap();
+        let other_member = ClientId::member("EE", "GOV", "12345678").unwrap();
+
+        // Member equality across subsystems
+        assert!(sub1.member_equals(&sub2));
+        assert!(sub1.member_equals(&member));
+        assert!(!sub1.member_equals(&other_member));
+
+        // Subsystem contains member
+        assert!(sub1.subsystem_contains_member(&member));
+        assert!(!member.subsystem_contains_member(&sub1));
+        assert!(!sub1.subsystem_contains_member(&other_member));
+    }
+
+    #[test]
+    fn test_client_id_from_str() {
+        let m: ClientId = "EE/COM/12345678".parse().unwrap();
+        assert!(m.is_member());
+        assert_eq!(m.member_code, "12345678");
+
+        let m_prefixed: ClientId = "MEMBER:EE/COM/12345678".parse().unwrap();
+        assert_eq!(m, m_prefixed);
+
+        let sub: ClientId = "EE/COM/12345678/billing".parse().unwrap();
+        assert!(sub.is_subsystem());
+        assert_eq!(sub.subsystem_code.as_deref(), Some("billing"));
+
+        let sub_prefixed: ClientId = "SUBSYSTEM:EE/COM/12345678/billing".parse().unwrap();
+        assert_eq!(sub, sub_prefixed);
+
+        // Errors on invalid prefixes or formats
+        assert!("MEMBER:EE/COM/12345678/extra".parse::<ClientId>().is_err());
+        assert!("SUBSYSTEM:EE/COM/12345678".parse::<ClientId>().is_err());
+        assert!("EE/COM".parse::<ClientId>().is_err());
+    }
+
+    #[test]
+    fn test_service_id_parsing_and_versions() {
+        // Without subsystem: INSTANCE/CLASS/CODE/SERVICE
+        let svc1: ServiceId = "EE/BUSINESS/JODA/getState".parse().unwrap();
+        assert_eq!(svc1.xroad_instance(), "EE");
+        assert_eq!(svc1.member_class(), "BUSINESS");
+        assert_eq!(svc1.member_code(), "JODA");
+        assert_eq!(svc1.subsystem_code(), None);
+        assert_eq!(svc1.service_code(), "getState");
+        assert_eq!(svc1.service_version(), None);
+        assert_eq!(svc1.to_string(), "EE/BUSINESS/JODA/getState");
+
+        // With subsystem: INSTANCE/CLASS/CODE/SUBSYSTEM/SERVICE
+        let svc2: ServiceId = "EE/COM/12345678/billing/getInvoices".parse().unwrap();
+        assert_eq!(svc2.subsystem_code(), Some("billing"));
+        assert_eq!(svc2.service_code(), "getInvoices");
+        assert_eq!(svc2.service_version(), None);
+
+        // With subsystem and version: INSTANCE/CLASS/CODE/SUBSYSTEM/SERVICE/VERSION
+        let svc3: ServiceId = "SERVICE:EE/COM/12345678/billing/getInvoices/v2"
+            .parse()
+            .unwrap();
+        assert_eq!(svc3.subsystem_code(), Some("billing"));
+        assert_eq!(svc3.service_code(), "getInvoices");
+        assert_eq!(svc3.service_version(), Some("v2"));
+        assert_eq!(
+            svc3.to_string(),
+            "EE/COM/12345678/billing/getInvoices/v2"
+        );
     }
 
     #[test]
     fn test_security_server_id() {
-        let server_str = "DEV/COM/12345678/ss1";
-        let server_id: SecurityServerId = server_str.parse().unwrap();
-        assert_eq!(server_id.server_code, "ss1");
-        assert_eq!(server_id.to_string(), server_str);
+        let server: SecurityServerId = "SERVER:EE/COM/12345678/ss1".parse().unwrap();
+        assert_eq!(server.xroad_instance, "EE");
+        assert_eq!(server.member_class, "COM");
+        assert_eq!(server.member_code, "12345678");
+        assert_eq!(server.server_code, "ss1");
+        assert_eq!(server.to_string(), "EE/COM/12345678/ss1");
+
+        let owner = server.owner();
+        assert!(owner.is_member());
+        assert_eq!(owner.to_string(), "EE/COM/12345678");
+    }
+
+    #[test]
+    fn test_groups_and_central_service() {
+        let global_grp: GlobalGroupId = "GLOBALGROUP:EE/security-officers".parse().unwrap();
+        assert_eq!(global_grp.xroad_instance, "EE");
+        assert_eq!(global_grp.group_code, "security-officers");
+        assert_eq!(global_grp.to_string(), "EE/security-officers");
+
+        let local_grp: LocalGroupId = "LOCALGROUP:administrators".parse().unwrap();
+        assert_eq!(local_grp.group_code, "administrators");
+        assert_eq!(local_grp.to_string(), "administrators");
+
+        let central_svc: CentralServiceId = "CENTRALSERVICE:EE/populationQuery".parse().unwrap();
+        assert_eq!(central_svc.xroad_instance, "EE");
+        assert_eq!(central_svc.service_code, "populationQuery");
+        assert_eq!(central_svc.to_string(), "EE/populationQuery");
+    }
+
+    #[test]
+    fn test_xml_client_identifier_roundtrip() {
+        let member = ClientId::member("EE", "COMPANY", "FOOBAR").unwrap();
+        let xml_repr = XRoadClientIdentifierType::from(&member);
+        let xml_str = xml_repr.to_xml("client");
+
+        assert!(xml_str.contains(r#"id:objectType="MEMBER""#));
+        assert!(xml_str.contains("<id:xRoadInstance>EE</id:xRoadInstance>"));
+        assert!(xml_str.contains("<id:memberClass>COMPANY</id:memberClass>"));
+        assert!(xml_str.contains("<id:memberCode>FOOBAR</id:memberCode>"));
+        assert!(!xml_str.contains("<id:subsystemCode>"));
+
+        let subsystem = ClientId::subsystem("EE", "COMPANY", "FOOBAR", "SUBSYSTEM").unwrap();
+        let sub_xml_repr = XRoadClientIdentifierType::from(&subsystem);
+        let sub_xml_str = sub_xml_repr.to_xml("client");
+        assert!(sub_xml_str.contains(r#"id:objectType="SUBSYSTEM""#));
+        assert!(sub_xml_str.contains("<id:subsystemCode>SUBSYSTEM</id:subsystemCode>"));
+    }
+
+    #[test]
+    fn test_xml_service_identifier_roundtrip() {
+        let svc = ServiceId::from_parts("EE", "BUSINESS", "JODA", None::<&str>, "getState", Some("v1")).unwrap();
+        let xml_repr = XRoadServiceIdentifierType::from(&svc);
+        let xml_str = xml_repr.to_xml("service");
+
+        assert!(xml_str.contains(r#"id:objectType="SERVICE""#));
+        assert!(xml_str.contains("<id:serviceCode>getState</id:serviceCode>"));
+        assert!(xml_str.contains("<id:serviceVersion>v1</id:serviceVersion>"));
+    }
+
+    #[test]
+    fn test_json_serialization() {
+        let client = ClientId::subsystem("EE", "COM", "12345", "sub1").unwrap();
+        let json = serde_json::to_string(&client).unwrap();
+        assert!(json.contains("xRoadInstance"));
+        assert!(json.contains("subsystemCode"));
+
+        let deserialized: ClientId = serde_json::from_str(&json).unwrap();
+        assert_eq!(client, deserialized);
     }
 }
