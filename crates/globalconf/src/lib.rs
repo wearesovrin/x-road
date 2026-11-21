@@ -180,6 +180,16 @@ impl GlobalConf {
         self.security_servers.get(server_id)
     }
 
+    /// Registers a Security Server address in the configuration.
+    pub fn register_security_server(&mut self, server_id: SecurityServerId, address: impl Into<String>) {
+        self.security_servers.insert(server_id, address.into());
+    }
+
+    /// Links a client to a Security Server in the configuration.
+    pub fn link_client_to_security_server(&mut self, client_id: ClientId, server_id: SecurityServerId) {
+        self.client_to_server.insert(client_id, server_id);
+    }
+
     /// Resolves which Security Server hosts the given client.
     pub fn get_security_server_for_client(&self, client_id: &ClientId) -> Option<&SecurityServerId> {
         if let Some(ss_id) = self.client_to_server.get(client_id) {

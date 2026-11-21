@@ -11,6 +11,17 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
+/// Status and metadata for a cryptographic token.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TokenStatus {
+    pub id: String,
+    pub name: String,
+    pub token_type: String,
+    pub logged_in: bool,
+    pub has_pin: bool,
+    pub pin: Option<String>,
+}
+
 /// Internal record for a managed software cryptographic key.
 #[derive(Clone)]
 pub struct SoftwareKeyEntry {
@@ -28,9 +39,31 @@ pub struct SoftwareKeyEntry {
 }
 
 /// Software-token backed signer service implementation for managing keys, CSRs, and digital signatures.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SignerServiceImpl {
     keys: Arc<RwLock<HashMap<String, SoftwareKeyEntry>>>,
+    tokens: Arc<RwLock<HashMap<String, TokenStatus>>>,
+}
+
+impl Default for SignerServiceImpl {
+    fn default() -> Self {
+        let mut tokens_map = HashMap::new();
+        tokens_map.insert(
+            "0".to_string(),
+            TokenStatus {
+                id: "0".to_string(),
+                name: "Software Token".to_string(),
+                token_type: "SOFTWARE".to_string(),
+                logged_in: true,
+                has_pin: true,
+                pin: Some("1234".to_string()),
+            },
+        );
+        Self {
+            keys: Arc::new(RwLock::new(HashMap::new())),
+            tokens: Arc::new(RwLock::new(tokens_map)),
+        }
+    }
 }
 
 impl SignerServiceImpl {
@@ -119,7 +152,133 @@ impl SignerServiceImpl {
             .pem()
             .map_err(|e| XRoadError::Crypto(format!("Failed to serialize CSR PEM: {e}")))?;
 
+        drop(keys_guard);
+        let mut keys_write = self.keys.write().await;
+        if let Some(entry) = keys_write.get_mut(key_id) {
+            let req_id = format!("csr-{}", uuid::Uuid::new_v4());
+            entry.cert_requests.push(CertRequestInfoProto {
+                id: req_id,
+                member_id: None,
+                subject_name: subject_cn.to_string(),
+                subject_alt_name: String::new(),
+                certificate_profile: None,
+            });
+        }
+
         Ok(csr_pem)
+    }
+
+    /// Lists all cryptographic tokens.
+    pub async fn list_tokens(&self) -> Vec<TokenStatus> {
+        self.tokens.read().await.values().cloned().collect()
+    }
+
+    /// Gets token by ID.
+    pub async fn get_token(&self, token_id: &str) -> Option<TokenStatus> {
+        self.tokens.read().await.get(token_id).cloned()
+    }
+
+    /// Logs into a token with the provided PIN.
+    pub async fn login_token(&self, token_id: &str, pin: &str) -> XRoadResult<bool> {
+        let mut tokens_guard = self.tokens.write().await;
+        let token = tokens_guard
+            .get_mut(token_id)
+            .ok_or_else(|| XRoadError::Crypto(format!("Token not found: {token_id}")))?;
+
+        if let Some(ref expected_pin) = token.pin {
+            if expected_pin == pin {
+                token.logged_in = true;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Logs out of a token.
+    pub async fn logout_token(&self, token_id: &str) -> XRoadResult<()> {
+        let mut tokens_guard = self.tokens.write().await;
+        let token = tokens_guard
+            .get_mut(token_id)
+            .ok_or_else(|| XRoadError::Crypto(format!("Token not found: {token_id}")))?;
+        token.logged_in = false;
+        Ok(())
+    }
+
+    /// Updates the PIN for a token.
+    pub async fn set_token_pin(
+        &self,
+        token_id: &str,
+        old_pin: Option<&str>,
+        new_pin: &str,
+    ) -> XRoadResult<()> {
+        let mut tokens_guard = self.tokens.write().await;
+        let token = tokens_guard
+            .get_mut(token_id)
+            .ok_or_else(|| XRoadError::Crypto(format!("Token not found: {token_id}")))?;
+
+        if let Some(ref current_pin) = token.pin {
+            if let Some(provided_old) = old_pin {
+                if current_pin != provided_old {
+                    return Err(XRoadError::Crypto("Invalid existing PIN".to_string()));
+                }
+            }
+        }
+
+        token.pin = Some(new_pin.to_string());
+        token.has_pin = true;
+        token.logged_in = true;
+        Ok(())
+    }
+
+    /// Lists all managed cryptographic keys.
+    pub async fn list_keys(&self) -> Vec<KeyInfoProto> {
+        let keys_guard = self.keys.read().await;
+        keys_guard
+            .values()
+            .map(|k| KeyInfoProto {
+                id: k.id.clone(),
+                friendly_name: k.friendly_name.clone(),
+                usage: k.usage,
+                available: true,
+                label: k.label.clone(),
+                public_key: k.public_key_pem.clone(),
+                certs: k.certs.clone(),
+                cert_requests: k.cert_requests.clone(),
+                sign_mechanism_name: k.sign_mechanism.clone(),
+            })
+            .collect()
+    }
+
+    /// Gets key info by ID.
+    pub async fn get_key(&self, key_id: &str) -> Option<KeyInfoProto> {
+        let keys_guard = self.keys.read().await;
+        keys_guard.get(key_id).map(|k| KeyInfoProto {
+            id: k.id.clone(),
+            friendly_name: k.friendly_name.clone(),
+            usage: k.usage,
+            available: true,
+            label: k.label.clone(),
+            public_key: k.public_key_pem.clone(),
+            certs: k.certs.clone(),
+            cert_requests: k.cert_requests.clone(),
+            sign_mechanism_name: k.sign_mechanism.clone(),
+        })
+    }
+
+    /// Deletes a key by ID.
+    pub async fn delete_key(&self, key_id: &str) -> XRoadResult<()> {
+        let mut keys_guard = self.keys.write().await;
+        keys_guard.remove(key_id);
+        Ok(())
+    }
+
+    /// Deletes a CSR associated with a key.
+    pub async fn delete_csr(&self, key_id: &str, csr_id: &str) -> XRoadResult<()> {
+        let mut keys_guard = self.keys.write().await;
+        if let Some(entry) = keys_guard.get_mut(key_id) {
+            entry.cert_requests.retain(|c| c.id != csr_id);
+        }
+        Ok(())
     }
 
     /// Digitally signs a pre-computed digest with the given key ID.
@@ -378,14 +537,16 @@ mod tests {
         assert!(!sig.is_empty());
 
         // 3. Verify signature with ring
-        let keys = signer.keys.read().await;
-        let entry = keys.get(&key_info.id).unwrap();
-        let key_pair = KeyPair::from_pem(&entry.key_pem).unwrap();
-        let public_key_der = key_pair.public_key_raw();
+        let public_key_der = {
+            let keys = signer.keys.read().await;
+            let entry = keys.get(&key_info.id).unwrap();
+            let key_pair = KeyPair::from_pem(&entry.key_pem).unwrap();
+            key_pair.public_key_raw().to_vec()
+        };
 
         let peer_public_key = ring::signature::UnparsedPublicKey::new(
             &ring::signature::ECDSA_P256_SHA256_ASN1,
-            public_key_der,
+            &public_key_der,
         );
         peer_public_key
             .verify(&digest, &sig)

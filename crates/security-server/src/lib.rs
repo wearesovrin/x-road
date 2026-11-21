@@ -20,10 +20,12 @@ pub async fn run_admin_api(
         None => DatabaseServerConf::connect_in_memory().await?,
     };
     let message_log = messagelog::MessageLogDb::connect_in_memory().await?;
-    let state = AdminApiState {
-        server_conf: std::sync::Arc::new(server_conf),
-        message_log: std::sync::Arc::new(message_log),
-    };
+    let state = AdminApiState::new(
+        std::sync::Arc::new(server_conf),
+        std::sync::Arc::new(message_log),
+        std::sync::Arc::new(globalconf::GlobalConf::new("DEV")),
+        std::sync::Arc::new(signer::SignerServiceImpl::new()),
+    );
 
     tracing::info!(
         "Starting X-Road Security Server Admin REST API on {} (Swagger UI at /swagger-ui)...",

@@ -3411,6 +3411,7 @@ dependencies = [
 name = "security-server"
 version = "0.1.0"
 dependencies = [
+ "acme",
  "base64 0.22.1",
  "chrono",
  "common",
@@ -3420,11 +3421,14 @@ dependencies = [
  "messagelog",
  "poem",
  "poem-openapi",
+ "proto",
  "proxy",
  "reqwest",
+ "sea-orm",
  "serde",
  "serde_json",
  "serverconf",
+ "signer",
  "thiserror",
  "tokio",
  "tracing",
@@ -3600,6 +3604,7 @@ dependencies = [
  "proto",
  "rcgen",
  "ring",
+ "serde",
  "sha2 0.10.9",
  "thiserror",
  "tokio",

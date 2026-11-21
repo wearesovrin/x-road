@@ -70,24 +70,29 @@ async fn test_security_server_e2e_flow() {
     });
 
     // 2. Configure Security Server Node
+    let provider = ClientId::subsystem_unchecked("DEV", "COM", "12345678", "PROVIDER");
+    let consumer = ClientId::subsystem_unchecked("DEV", "COM", "87654321", "CONSUMER");
+    let rogue = ClientId::subsystem_unchecked("DEV", "COM", "99999999", "ROGUE");
+
     let config = SecurityServerConfig {
         admin_bind: admin_bind.clone(),
         client_proxy_bind: client_proxy_bind.clone(),
         server_proxy_bind: server_proxy_bind.clone(),
         database_url: None, // in-memory SQLite
         messagelog_database_url: None, // in-memory SQLite
-        default_server_proxy_url: Some(format!("http://{server_proxy_bind}")),
+        default_server_proxy_url: None, // tests dynamic GlobalConf resolution!
     };
 
-    let node = SecurityServerNode::new_in_memory(config)
-        .await
-        .expect("Failed to create in-memory Security Server node");
+    let mut global_conf = globalconf::GlobalConf::new("DEV");
+    let sec_server_id = identifiers::SecurityServerId::new("DEV", "COM", "12345678", "SS-TEST-NODE").unwrap();
+    global_conf.register_security_server(sec_server_id.clone(), format!("127.0.0.1:{server_proxy_port}"));
+    global_conf.link_client_to_security_server(provider.clone(), sec_server_id);
+
+    let server_conf = serverconf::DatabaseServerConf::connect_in_memory().await.unwrap();
+    let message_log = messagelog::MessageLogDb::connect_in_memory().await.unwrap();
+    let node = SecurityServerNode::new(config, server_conf, message_log, global_conf);
 
     // 3. Register Clients, Services, and Access Rights in ServerConf
-    let provider = ClientId::subsystem_unchecked("DEV", "COM", "12345678", "PROVIDER");
-    let consumer = ClientId::subsystem_unchecked("DEV", "COM", "87654321", "CONSUMER");
-    let rogue = ClientId::subsystem_unchecked("DEV", "COM", "99999999", "ROGUE");
-
     node.server_conf.add_client(&provider, false).await.unwrap();
     node.server_conf.add_client(&consumer, false).await.unwrap();
 
@@ -324,4 +329,185 @@ async fn test_security_server_e2e_flow() {
     let fault = parsed_fault.body.fault.unwrap();
     assert_eq!(fault.fault_code, "SOAP-ENV:Client");
     assert_eq!(fault.fault_string, "Client.AccessDenied");
+
+    // -------------------------------------------------------------------------
+    // E2E Test 7: Full Admin Management OpenAPI Parity with Java
+    // -------------------------------------------------------------------------
+    // A) Initialization & Status
+    let init_status_url = format!("http://{admin_bind}/api/v1/initialization/status");
+    let init_resp = http_client.get(&init_status_url).send().await.unwrap();
+    assert_eq!(init_resp.status(), reqwest::StatusCode::OK);
+
+    let init_url = format!("http://{admin_bind}/api/v1/initialization");
+    let init_req = json!({
+        "instance": "DEV",
+        "member_class": "COM",
+        "member_code": "12345678",
+        "subsystem_code": "PROVIDER",
+        "software_token_pin": "5678"
+    });
+    let init_post_resp = http_client.post(&init_url).json(&init_req).send().await.unwrap();
+    assert_eq!(init_post_resp.status(), reqwest::StatusCode::OK);
+
+    // B) Client Enable / Disable & Details
+    let provider_str = provider.to_string();
+    let provider_encoded = provider_str.replace('/', "%2F");
+    let client_get_url = format!("http://{admin_bind}/api/v1/clients/{provider_encoded}");
+    let client_get_resp = http_client.get(&client_get_url).send().await.unwrap();
+    assert_eq!(client_get_resp.status(), reqwest::StatusCode::OK);
+    let client_dto: Value = client_get_resp.json().await.unwrap();
+    assert_eq!(client_dto["member_code"], "12345678");
+
+    let client_disable_url = format!("http://{admin_bind}/api/v1/clients/{provider_encoded}/disable");
+    let disable_resp = http_client.put(&client_disable_url).send().await.unwrap();
+    assert_eq!(disable_resp.status(), reqwest::StatusCode::OK);
+
+    let client_enable_url = format!("http://{admin_bind}/api/v1/clients/{provider_encoded}/enable");
+    let enable_resp = http_client.put(&client_enable_url).send().await.unwrap();
+    assert_eq!(enable_resp.status(), reqwest::StatusCode::OK);
+
+    // C) Service & Custom Endpoint Management
+    let services_list = node.server_conf.list_services_for_client(&provider).await.unwrap();
+    assert!(!services_list.is_empty());
+    let svc_id = services_list[0].id;
+
+    let add_ep_url = format!("http://{admin_bind}/api/v1/services/{svc_id}/endpoints");
+    let add_ep_req = json!({
+        "method": "GET",
+        "path": "/users/profile"
+    });
+    let add_ep_resp = http_client.post(&add_ep_url).json(&add_ep_req).send().await.unwrap();
+    assert_eq!(add_ep_resp.status(), reqwest::StatusCode::OK);
+    let ep_dto: Value = add_ep_resp.json().await.unwrap();
+    let ep_id = ep_dto["id"].as_i64().unwrap();
+    assert_eq!(ep_dto["method"], "GET");
+    assert_eq!(ep_dto["path"], "/users/profile");
+
+    // Endpoint ACL: grant & list
+    let ep_clients_url = format!("http://{admin_bind}/api/v1/endpoints/{ep_id}/service-clients");
+    let grant_ep_req = json!({ "member_id": consumer.to_string() });
+    let grant_ep_resp = http_client.post(&ep_clients_url).json(&grant_ep_req).send().await.unwrap();
+    assert_eq!(grant_ep_resp.status(), reqwest::StatusCode::OK);
+
+    let list_ep_resp = http_client.get(&ep_clients_url).send().await.unwrap();
+    assert_eq!(list_ep_resp.status(), reqwest::StatusCode::OK);
+    let ep_client_list: Vec<String> = list_ep_resp.json().await.unwrap();
+    assert!(ep_client_list.contains(&consumer.to_string()));
+
+    // D) Local Groups & Membership
+    let groups_url = format!("http://{admin_bind}/api/v1/clients/{provider_encoded}/local-groups");
+    let create_group_req = json!({
+        "group_code": "FINANCE-AUDITORS",
+        "description": "Internal and external financial auditors"
+    });
+    let create_group_resp = http_client.post(&groups_url).json(&create_group_req).send().await.unwrap();
+    assert_eq!(create_group_resp.status(), reqwest::StatusCode::OK);
+    let group_dto: Value = create_group_resp.json().await.unwrap();
+    let group_id = group_dto["id"].as_i64().unwrap();
+    assert_eq!(group_dto["group_code"], "FINANCE-AUDITORS");
+
+    let group_members_url = format!("http://{admin_bind}/api/v1/local-groups/{group_id}/members");
+    let add_member_req = json!({ "member_id": consumer.to_string() });
+    let add_member_resp = http_client.post(&group_members_url).json(&add_member_req).send().await.unwrap();
+    assert_eq!(add_member_resp.status(), reqwest::StatusCode::OK);
+
+    let list_members_resp = http_client.get(&group_members_url).send().await.unwrap();
+    assert_eq!(list_members_resp.status(), reqwest::StatusCode::OK);
+    let members_list: Vec<String> = list_members_resp.json().await.unwrap();
+    assert!(members_list.contains(&consumer.to_string()));
+
+    // E) Token & Keys & CSRs (Signer Engine)
+    let tokens_url = format!("http://{admin_bind}/api/v1/tokens");
+    let tokens_resp = http_client.get(&tokens_url).send().await.unwrap();
+    assert_eq!(tokens_resp.status(), reqwest::StatusCode::OK);
+    let tokens_list: Vec<Value> = tokens_resp.json().await.unwrap();
+    assert!(!tokens_list.is_empty());
+    assert_eq!(tokens_list[0]["token_type"], "SOFTWARE");
+
+    let generate_key_url = format!("http://{admin_bind}/api/v1/tokens/0/keys");
+    let gen_key_req = json!({ "label": "e2e-signing-key" });
+    let gen_key_resp = http_client.post(&generate_key_url).json(&gen_key_req).send().await.unwrap();
+    assert_eq!(gen_key_resp.status(), reqwest::StatusCode::OK);
+    let key_dto: Value = gen_key_resp.json().await.unwrap();
+    let key_id = key_dto["id"].as_str().unwrap();
+    assert_eq!(key_dto["label"], "e2e-signing-key");
+    assert!(key_dto["public_key"].as_str().unwrap().contains("BEGIN PUBLIC KEY"));
+
+    let csr_url = format!("http://{admin_bind}/api/v1/keys/{key_id}/csrs");
+    let csr_req = json!({ "subject_cn": "Security Server SS1 Signer" });
+    let csr_resp = http_client.post(&csr_url).json(&csr_req).send().await.unwrap();
+    assert_eq!(csr_resp.status(), reqwest::StatusCode::OK);
+    let csr_dto: Value = csr_resp.json().await.unwrap();
+    assert!(csr_dto["csr_pem"].as_str().unwrap().contains("BEGIN CERTIFICATE REQUEST"));
+
+    // F) System Settings, Maintenance Mode & Diagnostics
+    let version_url = format!("http://{admin_bind}/api/v1/system/version");
+    let version_resp = http_client.get(&version_url).send().await.unwrap();
+    assert_eq!(version_resp.status(), reqwest::StatusCode::OK);
+    let version_body: Value = version_resp.json().await.unwrap();
+    assert_eq!(version_body["edition"], "2024");
+
+    let server_addr_url = format!("http://{admin_bind}/api/v1/system/server-address");
+    let set_addr_req = json!({ "server_address": "https://ss.test.ee:8443" });
+    let set_addr_resp = http_client.put(&server_addr_url).json(&set_addr_req).send().await.unwrap();
+    assert_eq!(set_addr_resp.status(), reqwest::StatusCode::OK);
+
+    let get_addr_resp = http_client.get(&server_addr_url).send().await.unwrap();
+    let get_addr_body: Value = get_addr_resp.json().await.unwrap();
+    assert_eq!(get_addr_body["server_address"], "https://ss.test.ee:8443");
+
+    let maint_url = format!("http://{admin_bind}/api/v1/system/maintenance-mode");
+    let maint_enable_url = format!("http://{admin_bind}/api/v1/system/maintenance-mode/enable");
+    let maint_resp = http_client.put(&maint_enable_url).send().await.unwrap();
+    assert_eq!(maint_resp.status(), reqwest::StatusCode::OK);
+
+    let maint_status_resp = http_client.get(&maint_url).send().await.unwrap();
+    let maint_status_body: Value = maint_status_resp.json().await.unwrap();
+    assert_eq!(maint_status_body["maintenance_mode"], true);
+
+    let maint_disable_url = format!("http://{admin_bind}/api/v1/system/maintenance-mode/disable");
+    let _ = http_client.put(&maint_disable_url).send().await.unwrap();
+
+    let diag_globalconf_url = format!("http://{admin_bind}/api/v1/diagnostics/globalconf");
+    let diag_resp = http_client.get(&diag_globalconf_url).send().await.unwrap();
+    assert_eq!(diag_resp.status(), reqwest::StatusCode::OK);
+    let diag_body: Value = diag_resp.json().await.unwrap();
+    assert_eq!(diag_body["status"], "OK");
+
+    // G) Backups Management
+    let backups_url = format!("http://{admin_bind}/api/v1/backups");
+    let create_backup_resp = http_client.post(&backups_url).send().await.unwrap();
+    assert_eq!(create_backup_resp.status(), reqwest::StatusCode::OK);
+    let backup_dto: Value = create_backup_resp.json().await.unwrap();
+    let backup_file = backup_dto["filename"].as_str().unwrap();
+
+    let list_backups_resp = http_client.get(&backups_url).send().await.unwrap();
+    assert_eq!(list_backups_resp.status(), reqwest::StatusCode::OK);
+    let backups_list: Vec<Value> = list_backups_resp.json().await.unwrap();
+    assert_eq!(backups_list.len(), 1);
+    assert_eq!(backups_list[0]["filename"], backup_file);
+
+    let del_backup_url = format!("http://{admin_bind}/api/v1/backups/{backup_file}");
+    let del_resp = http_client.delete(&del_backup_url).send().await.unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+
+    // -------------------------------------------------------------------------
+    // E2E Test 8: Dynamic Global Configuration Address Resolution
+    // -------------------------------------------------------------------------
+    // Provider subsystem was linked to SS-TEST-NODE in GlobalConf at initialization.
+    // Client Proxy dynamically resolves target ServerProxy via GlobalConf!
+    let dynamic_resp = http_client
+        .post(&client_proxy_url)
+        .header("x-road-client", consumer.to_string())
+        .header("x-road-service", service.to_string())
+        .header("content-type", "application/json")
+        .json(&json!({"query": "dynamic-resolution-test"}))
+        .send()
+        .await
+        .expect("Failed to send dynamically resolved request");
+
+    assert_eq!(dynamic_resp.status(), reqwest::StatusCode::OK);
+    let dynamic_body: Value = dynamic_resp.json().await.unwrap();
+    assert_eq!(dynamic_body["userId"], 1001);
+    assert_eq!(dynamic_body["echo"]["query"], "dynamic-resolution-test");
 }

@@ -7,6 +7,7 @@ use poem::listener::TcpListener;
 use poem::{Route, Server};
 use proxy::{client_proxy_app, server_proxy_app, ClientProxyState, ServerProxyState};
 use serverconf::DatabaseServerConf;
+use signer::SignerServiceImpl;
 use std::sync::Arc;
 
 /// Unified X-Road Security Server daemon and gateway orchestrator.
@@ -16,6 +17,7 @@ pub struct SecurityServerNode {
     pub server_conf: Arc<DatabaseServerConf>,
     pub message_log: Arc<MessageLogDb>,
     pub global_conf: Arc<GlobalConf>,
+    pub signer: Arc<SignerServiceImpl>,
 }
 
 impl SecurityServerNode {
@@ -31,6 +33,7 @@ impl SecurityServerNode {
             server_conf: Arc::new(server_conf),
             message_log: Arc::new(message_log),
             global_conf: Arc::new(global_conf),
+            signer: Arc::new(SignerServiceImpl::new()),
         }
     }
 
@@ -82,10 +85,12 @@ impl SecurityServerNode {
 
     /// Constructs the Poem Route for the Admin REST API & Swagger UI.
     pub fn admin_api_app(&self) -> Route {
-        let state = AdminApiState {
-            server_conf: self.server_conf.clone(),
-            message_log: self.message_log.clone(),
-        };
+        let state = AdminApiState::new(
+            self.server_conf.clone(),
+            self.message_log.clone(),
+            self.global_conf.clone(),
+            self.signer.clone(),
+        );
         admin_api_app(state)
     }
 

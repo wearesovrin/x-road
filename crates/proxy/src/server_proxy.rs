@@ -299,7 +299,7 @@ pub async fn handle_server_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: "REST".to_string(),
+            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
             message_hash: resp_hash,
             signature_hash: None,
             message_body: String::from_utf8(resp_bytes.to_vec()).ok(),

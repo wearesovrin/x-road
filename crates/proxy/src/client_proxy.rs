@@ -265,6 +265,12 @@ pub async fn handle_client_request(
     // 3. Resolve destination Server Proxy URL
     let target_url = if let Some(direct) = header_map.get("x-road-server-proxy-url") {
         direct.clone()
+    } else if let Some(addr) = state.global_conf.get_security_server_address_for_client(&parsed_headers.service.client) {
+        if addr.starts_with("http://") || addr.starts_with("https://") {
+            addr.clone()
+        } else {
+            format!("http://{addr}")
+        }
     } else if let Some(ref def) = state.default_server_proxy_url {
         def.clone()
     } else {
@@ -316,7 +322,7 @@ pub async fn handle_client_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: "REST".to_string(),
+            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
             message_hash: resp_hash,
             signature_hash: None,
             message_body: String::from_utf8(resp_bytes.to_vec()).ok(),
