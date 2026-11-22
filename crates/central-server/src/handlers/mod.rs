@@ -13,6 +13,7 @@ pub mod security_servers_api;
 pub mod subsystems_api;
 pub mod system_api;
 pub mod timestamping_services_api;
+pub mod web_ui;
 
 pub use api_keys_api::ApiKeysApi;
 pub use backups_api::BackupsApi;
@@ -119,4 +120,5 @@ pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
             "/api/v1/globalconf/shared-params.xml",
             get(handle_shared_params_xml).data(state),
         )
+        .nest("/", web_ui::central_server_web_ui())
 }

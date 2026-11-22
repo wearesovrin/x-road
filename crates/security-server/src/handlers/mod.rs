@@ -11,6 +11,7 @@ pub mod message_log_api;
 pub mod services_api;
 pub mod system_api;
 pub mod tokens_api;
+pub mod web_ui;
 
 pub use access_rights_api::AccessRightsApi;
 pub use api_keys_api::ApiKeysApi;
@@ -187,7 +188,10 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
         .with(OpenTelemetryTracing::new(tracer.clone()))
         .data(state)
         .data(tracer);
-    Route::new().nest("/api", auth_api).nest("/swagger-ui", ui)
+    Route::new()
+        .nest("/api", auth_api)
+        .nest("/swagger-ui", ui)
+        .nest("/", web_ui::security_server_web_ui())
 }
 
 #[cfg(test)]

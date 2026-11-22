@@ -155,13 +155,16 @@ impl TimestampingService {
 
     /// Sends an RFC 3161 timestamp request to the specified TSA endpoint.
     async fn request_timestamp(&self, tsa_url: &str, digest: &[u8; 64]) -> XRoadResult<Vec<u8>> {
-        // Build timestamp request payload (RFC 3161 request or raw digest)
+        // Construct binary ASN.1 DER TimeStampReq conforming to RFC 3161
+        let ts_req_der = create_rfc3161_timestamp_req(digest);
+
         let resp = self
             .http_client
             .post(tsa_url)
             .header("Content-Type", "application/timestamp-query")
+            .header("Accept", "application/timestamp-reply")
             .timeout(Duration::from_secs(self.policy.timeout_seconds))
-            .body(digest.to_vec())
+            .body(ts_req_der)
             .send()
             .await
             .map_err(|e| XRoadError::Network(format!("TSA connection failed: {e}")))?;
@@ -179,5 +182,66 @@ impl TimestampingService {
             .map_err(|e| XRoadError::Network(format!("Failed to read TSA response: {e}")))?;
 
         Ok(bytes.to_vec())
+    }
+}
+
+/// Constructs a valid RFC 3161 ASN.1 DER TimeStampReq payload for SHA-512 hash.
+pub fn create_rfc3161_timestamp_req(digest: &[u8; 64]) -> Vec<u8> {
+    // SHA-512 OID: 2.16.840.1.101.3.4.2.3 -> [0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03]
+    let sha512_alg_id: &[u8] = &[
+        0x30, 0x0d, // SEQUENCE (13 bytes)
+        0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, // OID SHA-512
+        0x05, 0x00, // NULL parameters
+    ];
+
+    // MessageImprint SEQUENCE
+    let mut message_imprint = Vec::with_capacity(2 + sha512_alg_id.len() + 2 + 64);
+    message_imprint.extend_from_slice(sha512_alg_id);
+    message_imprint.push(0x04); // OCTET STRING
+    message_imprint.push(0x40); // 64 bytes length
+    message_imprint.extend_from_slice(digest);
+
+    // Inner TimeStampReq fields
+    let mut req_body = Vec::new();
+    // version INTEGER 1
+    req_body.extend_from_slice(&[0x02, 0x01, 0x01]);
+    // messageImprint
+    req_body.push(0x30); // SEQUENCE
+    req_body.push(message_imprint.len() as u8);
+    req_body.extend_from_slice(&message_imprint);
+    // certReq BOOLEAN TRUE
+    req_body.extend_from_slice(&[0x01, 0x01, 0xff]);
+
+    // Outer SEQUENCE tag + length
+    let mut der = Vec::with_capacity(4 + req_body.len());
+    der.push(0x30);
+    if req_body.len() < 128 {
+        der.push(req_body.len() as u8);
+    } else {
+        der.push(0x81);
+        der.push(req_body.len() as u8);
+    }
+    der.extend_from_slice(&req_body);
+    der
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_rfc3161_timestamp_req() {
+        let dummy_digest = [0x5au8; 64];
+        let req_der = create_rfc3161_timestamp_req(&dummy_digest);
+        assert!(!req_der.is_empty());
+        assert_eq!(req_der[0], 0x30); // Outer SEQUENCE
+        // Contains SHA-512 OID
+        assert!(
+            req_der
+                .windows(9)
+                .any(|w| w == &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03])
+        );
+        // Contains the dummy digest
+        assert!(req_der.windows(64).any(|w| w == &dummy_digest));
     }
 }

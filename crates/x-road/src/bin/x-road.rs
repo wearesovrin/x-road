@@ -85,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 database_url,
                 messagelog_database_url,
                 default_server_proxy_url,
+                ..Default::default()
             };
             security_server::run_security_server(config).await?;
         }

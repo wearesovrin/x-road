@@ -19,3 +19,4 @@ tracing.workspace = true
 identifiers.workspace = true
 thiserror.workspace = true
 serde.workspace = true
+cryptoki.workspace = true

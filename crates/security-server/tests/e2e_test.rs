@@ -103,6 +103,7 @@ async fn test_security_server_e2e_flow() {
         database_url: None,             // in-memory SQLite
         messagelog_database_url: None,  // in-memory SQLite
         default_server_proxy_url: None, // tests dynamic GlobalConf resolution!
+        ..Default::default()
     };
 
     let mut global_conf = globalconf::GlobalConf::new("DEV");

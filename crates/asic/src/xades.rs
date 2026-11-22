@@ -224,6 +224,14 @@ pub fn parse_xades_bes_signature(xml: &str) -> XRoadResult<XadesSignatureXml> {
     })
 }
 
+/// Canonicalizes a SignedInfo XML element and calculates its SHA-256 digest for cryptographic signing/verifying.
+pub fn compute_signed_info_digest(signed_info_xml: &str) -> XRoadResult<[u8; 32]> {
+    let canonical = crate::c14n::canonicalize_xml(signed_info_xml)?;
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    Ok(hasher.finalize().into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +253,11 @@ mod tests {
         assert_eq!(parsed.signed_info.references.len(), 2);
         assert_eq!(parsed.signed_info.references[0].uri, "message.xml");
         assert_eq!(parsed.signed_info.references[1].uri, "#SignedProperties-0");
+
+        // Test C14N digest computation
+        let signed_info_xml = r#"<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/></ds:SignedInfo>"#;
+        let digest =
+            compute_signed_info_digest(signed_info_xml).expect("Digest computation failed");
+        assert_ne!(digest, [0u8; 32]);
     }
 }

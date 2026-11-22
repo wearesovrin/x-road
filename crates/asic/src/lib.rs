@@ -1,10 +1,14 @@
+pub mod c14n;
 pub mod container;
 pub mod manifest;
 pub mod xades;
 
+pub use c14n::canonicalize_xml;
 pub use container::{ASIC_MIME_TYPE, AsicContainer, AsicContainerBuilder, AsicFile};
 pub use manifest::{MANIFEST_XMLNS, Manifest, ManifestFileEntry};
-pub use xades::create_xades_bes_signature;
+pub use xades::{
+    compute_signed_info_digest, create_xades_bes_signature, parse_xades_bes_signature,
+};
 
 #[cfg(test)]
 mod tests {

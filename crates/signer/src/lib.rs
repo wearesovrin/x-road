@@ -1,5 +1,8 @@
 pub mod client;
+pub mod hsm;
+
 pub use client::SignerClient;
+pub use hsm::HsmTokenManager;
 
 use common::{TokenType, XRoadError, XRoadResult};
 use proto::certificate_service_server::{CertificateService, CertificateServiceServer};
@@ -44,12 +47,13 @@ pub struct SoftwareKeyEntry {
     pub cert_requests: Vec<CertRequestInfoProto>,
 }
 
-/// Software-token backed signer service implementation for managing keys, CSRs, and digital signatures.
+/// Software and hardware token backed signer service implementation for managing keys, CSRs, and digital signatures.
 #[derive(Clone)]
 pub struct SignerServiceImpl {
     keys: Arc<RwLock<HashMap<String, SoftwareKeyEntry>>>,
     tokens: Arc<RwLock<HashMap<String, TokenStatus>>>,
     ocsp_cache: Arc<RwLock<HashMap<String, String>>>,
+    hsm: Option<Arc<HsmTokenManager>>,
 }
 
 impl Default for SignerServiceImpl {
@@ -66,10 +70,27 @@ impl Default for SignerServiceImpl {
                 pin: Some("1234".to_string()),
             },
         );
+
+        let hsm = HsmTokenManager::from_env().map(Arc::new);
+        if let Some(ref h) = hsm {
+            tokens_map.insert(
+                "1".to_string(),
+                TokenStatus {
+                    id: "1".to_string(),
+                    name: format!("Hardware Token ({})", h.module_path()),
+                    token_type: TokenType::Hardware,
+                    logged_in: true,
+                    has_pin: true,
+                    pin: None,
+                },
+            );
+        }
+
         Self {
             keys: Arc::new(RwLock::new(HashMap::new())),
             tokens: Arc::new(RwLock::new(tokens_map)),
             ocsp_cache: Arc::new(RwLock::new(HashMap::new())),
+            hsm,
         }
     }
 }
@@ -77,6 +98,11 @@ impl Default for SignerServiceImpl {
 impl SignerServiceImpl {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_hsm(mut self, hsm: Arc<HsmTokenManager>) -> Self {
+        self.hsm = Some(hsm);
+        self
     }
 
     pub fn into_key_service(self: Arc<Self>) -> KeyServiceServer<SignerKeyServiceAdapter> {
@@ -299,8 +325,15 @@ impl SignerServiceImpl {
         Ok(())
     }
 
-    /// Digitally signs a pre-computed digest with the given key ID.
+    /// Digitally signs a pre-computed digest with the given key ID (software key or PKCS#11 HSM).
     pub async fn sign_digest(&self, key_id: &str, digest: &[u8]) -> XRoadResult<Vec<u8>> {
+        if let Some(ref hsm) = self.hsm {
+            if key_id.starts_with("hsm:") || key_id.starts_with("token-1-") {
+                let key_label = key_id.strip_prefix("hsm:").unwrap_or(key_id);
+                return hsm.sign(key_label, digest).await;
+            }
+        }
+
         let keys_guard = self.keys.read().await;
         let entry = keys_guard
             .get(key_id)

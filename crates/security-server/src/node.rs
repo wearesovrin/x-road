@@ -99,12 +99,14 @@ impl SecurityServerNode {
         admin_api_app(state)
     }
 
-    /// Runs all Security Server services concurrently (Admin REST API, Client Proxy, Server Proxy).
+    /// Runs all Security Server services concurrently (Admin REST API, Client Proxy, Server Proxy, and optional mTLS on 5500).
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!(
             admin = %self.config.admin_bind,
             client_proxy = %self.config.client_proxy_bind,
             server_proxy = %self.config.server_proxy_bind,
+            mtls = %self.config.mtls_bind,
+            enable_mtls = %self.config.enable_mtls,
             "Starting unified X-Road Security Server node..."
         );
 
@@ -115,6 +117,13 @@ impl SecurityServerNode {
         let admin_server = Server::new(admin_listener).run(self.admin_api_app());
         let client_server = Server::new(client_listener).run(self.client_proxy_app());
         let server_proxy_server = Server::new(server_listener).run(self.server_proxy_app());
+
+        let server_proxy_state =
+            ServerProxyState::new(self.server_conf.clone(), self.message_log.clone())
+                .with_signer_client(self.signer_client.clone());
+        let mtls_bind = self.config.mtls_bind.clone();
+        let gconf = self.global_conf.clone();
+        let enable_mtls = self.config.enable_mtls;
 
         tokio::try_join!(
             async {
@@ -131,6 +140,13 @@ impl SecurityServerNode {
                 server_proxy_server
                     .await
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            },
+            async {
+                if enable_mtls {
+                    proxy::run_server_proxy_mtls(&mtls_bind, server_proxy_state, gconf).await
+                } else {
+                    Ok(())
+                }
             }
         )?;
 
