@@ -329,6 +329,16 @@ pub struct LogRecordResponse {
     pub timestamp: String,
 }
 
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ArchiveResponse {
+    pub success: bool,
+    pub records_archived: usize,
+    pub file_path: Option<String>,
+    pub file_name: Option<String>,
+    pub last_digest: Option<String>,
+    pub message: String,
+}
+
 // -----------------------------------------------------------------------------
 // Application State
 // -----------------------------------------------------------------------------
@@ -1679,6 +1689,45 @@ impl AdminApi {
             })
             .collect();
         Json(list)
+    }
+
+    /// Triggers on-demand message log archival and packaging into an ASiC-E archive.
+    #[oai(path = "/v1/messagelog/archive", method = "post")]
+    async fn archive_logs(&self) -> Json<ArchiveResponse> {
+        let archive_dir = std::env::var("XROAD_ARCHIVE_DIR")
+            .unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
+        let archiver = messagelog::MessageLogArchiver::new(
+            (*self.state.message_log).clone(),
+            archive_dir,
+        )
+        .with_max_records(100);
+
+        match archiver.archive_batch().await {
+            Ok(Some(info)) => Json(ArchiveResponse {
+                success: true,
+                records_archived: info.record_count,
+                file_path: Some(info.file_path.to_string_lossy().to_string()),
+                file_name: Some(info.file_name),
+                last_digest: Some(info.last_digest),
+                message: format!("Successfully archived {} records", info.record_count),
+            }),
+            Ok(None) => Json(ArchiveResponse {
+                success: true,
+                records_archived: 0,
+                file_path: None,
+                file_name: None,
+                last_digest: None,
+                message: "No unarchived records to process".to_string(),
+            }),
+            Err(e) => Json(ArchiveResponse {
+                success: false,
+                records_archived: 0,
+                file_path: None,
+                file_name: None,
+                last_digest: None,
+                message: format!("Archival failed: {e}"),
+            }),
+        }
     }
 }
 

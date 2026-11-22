@@ -50,6 +50,32 @@ pub enum Commands {
         #[command(subcommand)]
         action: CentralServerAction,
     },
+    /// MessageLog archive and verifier operations
+    #[command(alias = "mlog")]
+    MessageLog {
+        #[command(subcommand)]
+        action: MessageLogAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MessageLogAction {
+    /// Archive pending unarchived message logs into ASiC-E archive zip
+    Archive {
+        #[arg(short, long, default_value = "sqlite:////var/lib/xroad/messagelog.db?mode=rwc")]
+        db: String,
+        #[arg(short, long, default_value = "/var/lib/xroad/archive")]
+        dir: String,
+        #[arg(short, long, default_value_t = 1000)]
+        limit: usize,
+    },
+    /// Verify the integrity and hash chain of an X-Road message log archive
+    Verify {
+        #[arg(short, long)]
+        file: String,
+        #[arg(short, long)]
+        prev_digest: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -364,6 +390,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             }
         }
+        Commands::MessageLog { action } => match action {
+            MessageLogAction::Archive {
+                db: db_url,
+                dir,
+                limit,
+            } => {
+                println!("Connecting to MessageLog database: {db_url} ...");
+                let db = messagelog::MessageLogDb::connect(&db_url).await?;
+                let archiver =
+                    messagelog::MessageLogArchiver::new(db, &dir).with_max_records(limit);
+                println!("Starting archival run into directory: {dir} ...");
+                match archiver.archive_batch().await? {
+                    Some(info) => {
+                        println!("Archival successful!");
+                        println!("  Records archived: {}", info.record_count);
+                        println!("  Archive file: {}", info.file_path.display());
+                        println!("  Last chained digest: {}", info.last_digest);
+                    }
+                    None => {
+                        println!("No unarchived records found.");
+                    }
+                }
+            }
+            MessageLogAction::Verify { file, prev_digest } => {
+                println!("Verifying archive: {file} ...");
+                let result = messagelog::verify_archive(&file, prev_digest.as_deref())?;
+                println!("Archive verification SUCCEEDED!");
+                println!("  Containers verified: {}", result.records_verified);
+                println!(
+                    "  Previous digest: {}",
+                    if result.prev_digest.is_empty() {
+                        "-"
+                    } else {
+                        &result.prev_digest
+                    }
+                );
+                println!("  Final chained digest: {}", result.last_digest);
+                for c in &result.containers {
+                    println!("    [OK] {c}");
+                }
+            }
+        },
     }
 
     Ok(())

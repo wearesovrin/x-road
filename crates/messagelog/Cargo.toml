@@ -16,3 +16,5 @@ sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
+asic.workspace = true
+zip.workspace = true

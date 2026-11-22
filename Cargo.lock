@@ -2098,6 +2098,7 @@ dependencies = [
 name = "messagelog"
 version = "0.1.0"
 dependencies = [
+ "asic",
  "chrono",
  "common",
  "identifiers",
@@ -2107,6 +2108,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "tokio",
+ "zip",
 ]
 
 [[package]]

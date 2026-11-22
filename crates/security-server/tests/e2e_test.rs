@@ -510,4 +510,28 @@ async fn test_security_server_e2e_flow() {
     let dynamic_body: Value = dynamic_resp.json().await.unwrap();
     assert_eq!(dynamic_body["userId"], 1001);
     assert_eq!(dynamic_body["echo"]["query"], "dynamic-resolution-test");
+
+    // -------------------------------------------------------------------------
+    // 9. On-Demand MessageLog Archival & Verification
+    // -------------------------------------------------------------------------
+    let archive_resp = http_client
+        .post(format!("http://{admin_bind}/api/v1/messagelog/archive"))
+        .send()
+        .await
+        .expect("Failed to invoke messagelog archive endpoint");
+
+    assert_eq!(archive_resp.status(), reqwest::StatusCode::OK);
+    let archive_json: Value = archive_resp.json().await.unwrap();
+    assert_eq!(archive_json["success"], true);
+    let archived_count = archive_json["records_archived"].as_u64().unwrap();
+    assert!(archived_count > 0, "Expected at least 1 record archived, got {}", archived_count);
+
+    let file_path = archive_json["file_path"].as_str().expect("Expected file_path in archive response");
+    assert!(std::path::Path::new(file_path).exists(), "Archive file {} must exist", file_path);
+
+    // Verify cryptographic hash chain & ASiC-E containers in the generated archive
+    let verify_result = messagelog::verify_archive(file_path, None).expect("verify_archive failed");
+    assert!(verify_result.valid);
+    assert_eq!(verify_result.records_verified as u64, archived_count);
+    assert_eq!(verify_result.last_digest, archive_json["last_digest"].as_str().unwrap());
 }
