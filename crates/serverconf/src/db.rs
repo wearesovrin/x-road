@@ -745,4 +745,30 @@ impl ServerConfProvider for DatabaseServerConf {
 
         Ok(svc.map(|s| s.url))
     }
+
+    async fn list_services(&self, client_id: &ClientId) -> XRoadResult<Vec<ServiceId>> {
+        let models = self.list_services_for_client(client_id).await?;
+        let mut services = Vec::new();
+        for m in models {
+            if let Ok(svc) = ServiceId::new(client_id.clone(), &m.service_code, m.service_version.as_deref()) {
+                services.push(svc);
+            }
+        }
+        Ok(services)
+    }
+
+    async fn get_allowed_services(
+        &self,
+        producer: &ClientId,
+        consumer: &ClientId,
+    ) -> XRoadResult<Vec<ServiceId>> {
+        let all_services = self.list_services(producer).await?;
+        let mut allowed = Vec::new();
+        for svc in all_services {
+            if self.is_service_allowed(consumer, &svc).await.unwrap_or(false) {
+                allowed.push(svc);
+            }
+        }
+        Ok(allowed)
+    }
 }

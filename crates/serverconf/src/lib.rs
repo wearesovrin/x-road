@@ -57,6 +57,16 @@ pub trait ServerConfProvider: Send + Sync {
 
     /// Gets the backend URL for an internal service.
     async fn get_service_url(&self, service_id: &ServiceId) -> XRoadResult<Option<String>>;
+
+    /// Lists all services configured for a given client (producer).
+    async fn list_services(&self, client_id: &ClientId) -> XRoadResult<Vec<ServiceId>>;
+
+    /// Lists all services allowed for a consumer calling a producer.
+    async fn get_allowed_services(
+        &self,
+        producer: &ClientId,
+        consumer: &ClientId,
+    ) -> XRoadResult<Vec<ServiceId>>;
 }
 
 /// In-memory mock server configuration for testing.
@@ -87,6 +97,30 @@ impl ServerConfProvider for InMemoryServerConf {
 
     async fn get_service_url(&self, service_id: &ServiceId) -> XRoadResult<Option<String>> {
         Ok(self.service_urls.get(service_id).cloned())
+    }
+
+    async fn list_services(&self, client_id: &ClientId) -> XRoadResult<Vec<ServiceId>> {
+        let list: Vec<ServiceId> = self
+            .service_urls
+            .keys()
+            .filter(|s| s.client == *client_id)
+            .cloned()
+            .collect();
+        Ok(list)
+    }
+
+    async fn get_allowed_services(
+        &self,
+        producer: &ClientId,
+        consumer: &ClientId,
+    ) -> XRoadResult<Vec<ServiceId>> {
+        let mut allowed = Vec::new();
+        for (svc, clients) in &self.access_rights {
+            if svc.client == *producer && clients.contains(consumer) {
+                allowed.push(svc.clone());
+            }
+        }
+        Ok(allowed)
     }
 }
 

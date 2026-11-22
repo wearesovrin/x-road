@@ -106,6 +106,13 @@ impl SoapEnvelopeXml {
         Self::from_xroad_headers(&headers, payload)
     }
 
+    /// Creates a new SOAP response envelope.
+    pub fn new_response(client: ClientId, service: ServiceId, query_id: String, payload: Option<String>) -> Self {
+        let mut headers = XRoadHeaders::new(client, service);
+        headers.id = query_id;
+        Self::from_xroad_headers(&headers, payload)
+    }
+
     /// Creates a SOAP envelope from `XRoadHeaders` and optional body payload.
     pub fn from_xroad_headers(headers: &XRoadHeaders, payload: Option<String>) -> Self {
         Self {

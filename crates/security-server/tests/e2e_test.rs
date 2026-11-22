@@ -534,4 +534,67 @@ async fn test_security_server_e2e_flow() {
     assert!(verify_result.valid);
     assert_eq!(verify_result.records_verified as u64, archived_count);
     assert_eq!(verify_result.last_digest, archive_json["last_digest"].as_str().unwrap());
+
+    // -------------------------------------------------------------------------
+    // 10. Metaservices Verification (listMethods and allowedMethods)
+    // -------------------------------------------------------------------------
+    // REST listMethods
+    let list_methods_url = format!("http://{client_proxy_bind}/r1/{provider_str}/listMethods");
+    let list_resp = http_client
+        .get(&list_methods_url)
+        .header("x-road-client", consumer.to_string())
+        .send()
+        .await
+        .expect("Failed to call listMethods metaservice");
+
+    assert_eq!(list_resp.status(), reqwest::StatusCode::OK);
+    let list_json: Value = list_resp.json().await.unwrap();
+    assert!(list_json.is_array());
+    let methods: Vec<&str> = list_json
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["service_code"].as_str())
+        .collect();
+    assert!(methods.contains(&"getUserProfile"), "listMethods should contain getUserProfile");
+    assert!(methods.contains(&"getSoapUser"), "listMethods should contain getSoapUser");
+
+    // REST allowedMethods
+    let allowed_methods_url = format!("http://{client_proxy_bind}/r1/{provider_str}/allowedMethods");
+    let allowed_resp = http_client
+        .get(&allowed_methods_url)
+        .header("x-road-client", consumer.to_string())
+        .send()
+        .await
+        .expect("Failed to call allowedMethods metaservice");
+
+    assert_eq!(allowed_resp.status(), reqwest::StatusCode::OK);
+    let allowed_json: Value = allowed_resp.json().await.unwrap();
+    let allowed_methods: Vec<&str> = allowed_json
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["service_code"].as_str())
+        .collect();
+    assert!(allowed_methods.contains(&"getUserProfile"));
+
+    // SOAP listMethods
+    let list_methods_service = ServiceId::new(provider.clone(), "listMethods", None::<&str>).unwrap();
+    let soap_list_envelope = message::SoapEnvelopeXml::new_request(
+        consumer.clone(),
+        list_methods_service,
+        None,
+    );
+    let soap_list_resp = http_client
+        .post(&client_proxy_url)
+        .header("content-type", "text/xml; charset=utf-8")
+        .body(soap_list_envelope.to_xml().unwrap())
+        .send()
+        .await
+        .expect("Failed to call SOAP listMethods");
+
+    assert_eq!(soap_list_resp.status(), reqwest::StatusCode::OK);
+    let soap_list_body = soap_list_resp.text().await.unwrap();
+    assert!(soap_list_body.contains("listMethodsResponse"));
+    assert!(soap_list_body.contains("getUserProfile"));
 }

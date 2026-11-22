@@ -133,6 +133,109 @@ pub async fn handle_server_request(
         "ServerProxy: Incoming request received"
     );
 
+    // -------------------------------------------------------------------------
+    // Metaservice Handling (listMethods, allowedMethods, getOpenAPI, getWsdl)
+    // -------------------------------------------------------------------------
+    let service_code = parsed_headers.service.service_code.as_str();
+    if service_code.eq_ignore_ascii_case("listMethods")
+        || service_code.eq_ignore_ascii_case("allowedMethods")
+    {
+        let services = if service_code.eq_ignore_ascii_case("listMethods") {
+            state
+                .server_conf
+                .list_services(&parsed_headers.service.client)
+                .await
+                .unwrap_or_default()
+        } else {
+            state
+                .server_conf
+                .get_allowed_services(&parsed_headers.service.client, &parsed_headers.client)
+                .await
+                .unwrap_or_default()
+        };
+
+        if is_xml {
+            let tag = if service_code.eq_ignore_ascii_case("listMethods") {
+                "listMethodsResponse"
+            } else {
+                "allowedMethodsResponse"
+            };
+            let mut methods_xml =
+                format!(r#"<{tag} xmlns:xroad="http://x-road.eu/xsd/xroad.xsd">"#);
+            for s in &services {
+                let code = if let Some(ref v) = s.service_version {
+                    format!("{}.{}", s.service_code, v)
+                } else {
+                    s.service_code.clone()
+                };
+                methods_xml.push_str(&format!(r#"<xroad:service>{code}</xroad:service>"#));
+            }
+            methods_xml.push_str(&format!(r#"</{tag}>"#));
+
+            let resp_envelope = SoapEnvelopeXml::new_response(
+                parsed_headers.client.clone(),
+                parsed_headers.service.clone(),
+                query_id.clone(),
+                Some(methods_xml),
+            );
+            let resp_xml = resp_envelope.to_xml().unwrap_or_default();
+
+            let _ = state
+                .message_log
+                .log_message(NewLogRecord {
+                    query_id: query_id.clone(),
+                    x_request_id: None,
+                    client_id_str: Some(parsed_headers.client.to_string()),
+                    service_id_str: Some(parsed_headers.service.to_string()),
+                    discriminator: "SOAP".to_string(),
+                    message_hash: format!("{:x}", Sha256::digest(resp_xml.as_bytes())),
+                    signature_hash: None,
+                    message_body: Some(resp_xml.clone()),
+                    signature_data: None,
+                    response: true,
+                })
+                .await;
+
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .content_type("text/xml; charset=utf-8")
+                .body(resp_xml));
+        } else {
+            let json_services: Vec<serde_json::Value> = services
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "service_code": s.service_code,
+                        "service_version": s.service_version,
+                    })
+                })
+                .collect();
+            let json_body =
+                serde_json::to_string(&json_services).unwrap_or_else(|_| "[]".to_string());
+
+            let _ = state
+                .message_log
+                .log_message(NewLogRecord {
+                    query_id: query_id.clone(),
+                    x_request_id: None,
+                    client_id_str: Some(parsed_headers.client.to_string()),
+                    service_id_str: Some(parsed_headers.service.to_string()),
+                    discriminator: "REST".to_string(),
+                    message_hash: format!("{:x}", Sha256::digest(json_body.as_bytes())),
+                    signature_hash: None,
+                    message_body: Some(json_body.clone()),
+                    signature_data: None,
+                    response: true,
+                })
+                .await;
+
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .content_type("application/json")
+                .body(json_body));
+        }
+    }
+
     // 1. Verify access permissions for client calling service
     match state
         .server_conf
