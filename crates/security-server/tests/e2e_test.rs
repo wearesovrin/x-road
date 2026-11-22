@@ -348,6 +348,7 @@ async fn test_security_server_e2e_flow() {
         .unwrap()
         .expect("SOAP query was not logged in MessageLogDb!");
     assert_eq!(soap_log_record.discriminator, "SOAP");
+    assert_eq!(soap_log_record.protocol(), common::MessageProtocol::Soap);
 
     // Test unauthorized client sending SOAP query returns standard SOAP Fault XML
     let unauth_soap_envelope = message::SoapEnvelopeXml::new_request(
@@ -494,7 +495,10 @@ async fn test_security_server_e2e_flow() {
     assert_eq!(tokens_resp.status(), reqwest::StatusCode::OK);
     let tokens_list: Vec<Value> = tokens_resp.json().await.unwrap();
     assert!(!tokens_list.is_empty());
-    assert_eq!(tokens_list[0]["token_type"], "SOFTWARE");
+    assert_eq!(
+        tokens_list[0]["token_type"],
+        common::TokenType::Software.to_string()
+    );
 
     let generate_key_url = format!("http://{admin_bind}/api/v1/tokens/0/keys");
     let gen_key_req = json!({ "label": "e2e-signing-key" });

@@ -116,7 +116,7 @@ impl MessageLogArchiver {
             // Build ASiC container for this message record
             let mut builder = AsicContainerBuilder::new();
 
-            let (msg_filename, mime_type) = if record.discriminator == "REST"
+            let (msg_filename, mime_type) = if record.protocol().is_rest()
                 || record
                     .message_body
                     .as_deref()
@@ -363,7 +363,7 @@ mod tests {
                 x_request_id: Some("req-1".to_string()),
                 client_id_str: Some("DEV/COM/123/CLIENT".to_string()),
                 service_id_str: Some("DEV/COM/123/SERVICE".to_string()),
-                discriminator: "SOAP".to_string(),
+                discriminator: common::MessageProtocol::Soap,
                 message_hash: "hash001".to_string(),
                 signature_hash: Some("sighash001".to_string()),
                 message_body: Some("<soap:Envelope>Msg1</soap:Envelope>".to_string()),
@@ -379,7 +379,7 @@ mod tests {
                 x_request_id: Some("req-1".to_string()),
                 client_id_str: Some("DEV/COM/123/CLIENT".to_string()),
                 service_id_str: Some("DEV/COM/123/SERVICE".to_string()),
-                discriminator: "SOAP".to_string(),
+                discriminator: common::MessageProtocol::Soap,
                 message_hash: "hash002".to_string(),
                 signature_hash: Some("sighash002".to_string()),
                 message_body: Some("<soap:Envelope>Msg1Response</soap:Envelope>".to_string()),

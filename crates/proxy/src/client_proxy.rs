@@ -1,4 +1,4 @@
-use common::headers;
+use common::{MessageProtocol, headers};
 use globalconf::GlobalConf;
 use identifiers::{ClientId, ServiceId};
 use message::{SoapEnvelopeXml, XRoadHeaders};
@@ -273,9 +273,9 @@ pub async fn handle_client_request(
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
             discriminator: if is_xml {
-                "SOAP".to_string()
+                MessageProtocol::Soap
             } else {
-                "REST".to_string()
+                MessageProtocol::Rest
             },
             message_hash,
             signature_hash: sig_hash.clone(),
@@ -352,9 +352,9 @@ pub async fn handle_client_request(
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
             discriminator: if is_xml {
-                "SOAP".to_string()
+                MessageProtocol::Soap
             } else {
-                "REST".to_string()
+                MessageProtocol::Rest
             },
             message_hash: resp_hash,
             signature_hash: None,

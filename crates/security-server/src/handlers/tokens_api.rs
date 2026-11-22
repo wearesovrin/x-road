@@ -21,7 +21,7 @@ impl TokensApi {
             .map(|t| TokenDto {
                 id: t.id,
                 name: t.name,
-                token_type: t.token_type,
+                token_type: t.token_type.to_string(),
                 logged_in: t.logged_in,
                 has_pin: t.has_pin,
             })

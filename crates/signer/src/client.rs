@@ -260,7 +260,7 @@ impl SignerClient {
                         .collect();
 
                     list.push(TokenInfoProto {
-                        r#type: t.token_type.clone(),
+                        r#type: t.token_type.to_string(),
                         friendly_name: Some(t.name.clone()),
                         id: t.id.clone(),
                         read_only: false,

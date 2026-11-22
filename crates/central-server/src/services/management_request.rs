@@ -1,6 +1,6 @@
 use crate::entities::management_request;
 use crate::services::security_server::SecurityServerService;
-use common::{XRoadError, XRoadResult};
+use common::{ManagementRequestStatus, ManagementRequestType, XRoadError, XRoadResult};
 use identifiers::ClientId;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 
@@ -25,7 +25,7 @@ impl ManagementRequestService {
             security_server_id: Set(security_server_id),
             client_id_str: Set(client_id_str.map(ToString::to_string)),
             auth_cert_pem: Set(auth_cert_pem.map(ToString::to_string)),
-            status: Set("WAITING_FOR_APPROVAL".to_string()),
+            status: Set(ManagementRequestStatus::WaitingForApproval.to_string()),
             comments: Set(comments.map(ToString::to_string)),
             created_at: Set(now),
             updated_at: Set(now),
@@ -63,8 +63,10 @@ impl ManagementRequestService {
             XRoadError::Configuration(format!("Management request not found: {id}"))
         })?;
 
-        match req.request_type.as_str() {
-            "CLIENT_REGISTRATION" | "AUTH_CERT_REGISTRATION" | "OWNER_CHANGE" => {
+        match req.request_type.parse::<ManagementRequestType>() {
+            Ok(ManagementRequestType::ClientRegistration)
+            | Ok(ManagementRequestType::AuthCertRegistration)
+            | Ok(ManagementRequestType::OwnerChange) => {
                 if let (Some(server_id), Some(client_id_str)) =
                     (req.security_server_id, req.client_id_str.as_ref())
                 {
@@ -84,7 +86,7 @@ impl ManagementRequestService {
                     .await;
                 }
             }
-            "CLIENT_DELETION" => {
+            Ok(ManagementRequestType::ClientDeletion) => {
                 if let (Some(server_id), Some(client_id_str)) =
                     (req.security_server_id, req.client_id_str.as_ref())
                 {
@@ -100,7 +102,7 @@ impl ManagementRequestService {
         }
 
         let mut active: management_request::ActiveModel = req.into();
-        active.status = Set("APPROVED".to_string());
+        active.status = Set(ManagementRequestStatus::Approved.to_string());
         active.updated_at = Set(chrono::Utc::now());
         active
             .update(db)
@@ -117,7 +119,7 @@ impl ManagementRequestService {
         })?;
 
         let mut active: management_request::ActiveModel = req.into();
-        active.status = Set("DECLINED".to_string());
+        active.status = Set(ManagementRequestStatus::Declined.to_string());
         active.updated_at = Set(chrono::Utc::now());
         active
             .update(db)

@@ -1,4 +1,4 @@
-use common::headers;
+use common::{MessageProtocol, headers};
 use globalconf::GlobalConf;
 use message::{SoapEnvelopeXml, XRoadHeaders};
 use messagelog::{MessageLogDb, NewLogRecord};
@@ -200,7 +200,7 @@ pub async fn handle_server_request(
                     x_request_id: None,
                     client_id_str: Some(parsed_headers.client.to_string()),
                     service_id_str: Some(parsed_headers.service.to_string()),
-                    discriminator: "SOAP".to_string(),
+                    discriminator: MessageProtocol::Soap,
                     message_hash: format!("{:x}", Sha256::digest(resp_xml.as_bytes())),
                     signature_hash: None,
                     message_body: Some(resp_xml.clone()),
@@ -233,7 +233,7 @@ pub async fn handle_server_request(
                     x_request_id: None,
                     client_id_str: Some(parsed_headers.client.to_string()),
                     service_id_str: Some(parsed_headers.service.to_string()),
-                    discriminator: "REST".to_string(),
+                    discriminator: MessageProtocol::Rest,
                     message_hash: format!("{:x}", Sha256::digest(json_body.as_bytes())),
                     signature_hash: None,
                     message_body: Some(json_body.clone()),
@@ -417,9 +417,9 @@ pub async fn handle_server_request(
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
             discriminator: if is_xml {
-                "SOAP".to_string()
+                MessageProtocol::Soap
             } else {
-                "REST".to_string()
+                MessageProtocol::Rest
             },
             message_hash,
             signature_hash: sig_hash,
@@ -477,9 +477,9 @@ pub async fn handle_server_request(
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
             discriminator: if is_xml {
-                "SOAP".to_string()
+                MessageProtocol::Soap
             } else {
-                "REST".to_string()
+                MessageProtocol::Rest
             },
             message_hash: resp_hash,
             signature_hash: None,

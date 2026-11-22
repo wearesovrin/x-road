@@ -326,7 +326,7 @@ impl ServerConfProvider for ServerConf {
     async fn is_client_allowed(&self, client_id: &ClientId) -> XRoadResult<bool> {
         let client = ClientService::get_client(&self.raw_db, client_id).await?;
         Ok(client
-            .map(|c| c.client_status == "REGISTERED")
+            .map(|c| c.client_status == common::ClientStatus::Registered.as_ref())
             .unwrap_or(false))
     }
 

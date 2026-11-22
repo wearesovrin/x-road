@@ -6,8 +6,8 @@ use common::XRoadResult;
 use identifiers::{ClientId, ServiceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
+pub use common::ServiceType;
 pub use migration::Migrator;
 pub use services::{
     AccessRightService, ApiKeyService, CertificateService, ClientService, DatabaseServerConf,
@@ -21,28 +21,6 @@ pub struct ServiceDescription {
     pub url: String,
     pub service_type: ServiceType,
     pub services: Vec<ServiceId>,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    Display,
-    EnumString,
-    AsRefStr,
-    IntoStaticStr,
-)]
-#[strum(ascii_case_insensitive, serialize_all = "UPPERCASE")]
-#[serde(rename_all = "UPPERCASE")]
-pub enum ServiceType {
-    Rest,
-    Soap,
-    Wsdl,
-    OpenApi,
 }
 
 /// Local Security Server configuration provider trait.

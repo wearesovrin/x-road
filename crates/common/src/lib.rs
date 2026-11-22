@@ -1,6 +1,8 @@
+pub mod enums;
 pub mod error;
 pub mod time;
 
+pub use enums::*;
 pub use error::{FaultCode, XRoadError, XRoadResult};
 pub use time::CallBudget;
 

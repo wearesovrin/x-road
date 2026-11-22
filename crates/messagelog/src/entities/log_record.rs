@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use common::MessageProtocol;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -42,5 +43,10 @@ impl Model {
     /// Attempts to parse the client identifier string into a structured ClientId.
     pub fn client_id(&self) -> Option<identifiers::ClientId> {
         self.client_id_str.as_deref().and_then(|s| s.parse().ok())
+    }
+
+    /// Returns the parsed MessageProtocol enum for this record.
+    pub fn protocol(&self) -> MessageProtocol {
+        self.discriminator.parse().unwrap_or(MessageProtocol::Rest)
     }
 }

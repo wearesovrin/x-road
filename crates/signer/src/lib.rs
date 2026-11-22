@@ -1,7 +1,7 @@
 pub mod client;
 pub use client::SignerClient;
 
-use common::{XRoadError, XRoadResult};
+use common::{TokenType, XRoadError, XRoadResult};
 use proto::certificate_service_server::{CertificateService, CertificateServiceServer};
 use proto::key_service_server::{KeyService, KeyServiceServer};
 use proto::ocsp_service_server::{OcspService, OcspServiceServer};
@@ -22,7 +22,7 @@ use tonic::{Request, Response, Status};
 pub struct TokenStatus {
     pub id: String,
     pub name: String,
-    pub token_type: String,
+    pub token_type: TokenType,
     pub logged_in: bool,
     pub has_pin: bool,
     pub pin: Option<String>,
@@ -60,7 +60,7 @@ impl Default for SignerServiceImpl {
             TokenStatus {
                 id: "0".to_string(),
                 name: "Software Token".to_string(),
-                token_type: "SOFTWARE".to_string(),
+                token_type: TokenType::Software,
                 logged_in: true,
                 has_pin: true,
                 pin: Some("1234".to_string()),
@@ -546,7 +546,7 @@ impl TokenService for SignerTokenServiceAdapter {
             .collect();
 
         Ok(Response::new(TokenInfoProto {
-            r#type: token.token_type.clone(),
+            r#type: token.token_type.to_string(),
             friendly_name: Some(token.name.clone()),
             id: token.id.clone(),
             read_only: false,
@@ -655,7 +655,7 @@ impl TokenService for SignerTokenServiceAdapter {
                 .collect();
 
             token_list.push(TokenInfoProto {
-                r#type: token.token_type.clone(),
+                r#type: token.token_type.to_string(),
                 friendly_name: Some(token.name.clone()),
                 id: token.id.clone(),
                 read_only: false,

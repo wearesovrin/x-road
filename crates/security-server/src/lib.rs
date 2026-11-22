@@ -1,11 +1,13 @@
 pub mod config;
 pub mod handlers;
+pub mod middleware;
 pub mod node;
 
 pub use config::SecurityServerConfig;
 pub use handlers::{AdminApi, AdminApiState, ServerStatus, admin_api_app};
 // Backward-compatible alias
 pub use handlers as admin_api;
+pub use middleware::{SecurityServerAuthEndpoint, SecurityServerAuthMiddleware, init_tracer};
 pub use node::SecurityServerNode;
 
 use poem::Server;

@@ -30,13 +30,8 @@ pub use subsystems_api::SubsystemsApi;
 pub use system_api::SystemApi;
 pub use timestamping_services_api::TimestampingServicesApi;
 
+use crate::middleware::{CentralServerAuthMiddleware, init_tracer};
 use crate::services::CentralServerDb;
-use opentelemetry::{global, trace::TracerProvider as _};
-use opentelemetry_sdk::{
-    Resource,
-    propagation::TraceContextPropagator,
-    trace::{SdkTracer, SdkTracerProvider},
-};
 use poem::{
     EndpointExt, IntoResponse, Response, Route, get, handler,
     http::StatusCode,
@@ -44,27 +39,6 @@ use poem::{
     web::Data,
 };
 use poem_openapi::OpenApiService;
-
-pub fn init_tracer(service_name: &str) -> SdkTracer {
-    global::set_text_map_propagator(TraceContextPropagator::new());
-    let mut builder = SdkTracerProvider::builder().with_resource(
-        Resource::builder()
-            .with_service_name(service_name.to_string())
-            .build(),
-    );
-
-    if let Ok(exporter) = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .build()
-    {
-        builder = builder.with_batch_exporter(exporter);
-    }
-
-    let provider = builder.build();
-    let tracer = provider.tracer(service_name.to_string());
-    global::set_tracer_provider(provider);
-    tracer
-}
 
 #[derive(Clone)]
 pub struct CentralServerState {
@@ -96,74 +70,6 @@ pub async fn handle_shared_params_xml(
         .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR))?;
 
     Ok(RawXml(xml))
-}
-
-pub struct CentralServerAuthMiddleware {
-    pub db: CentralServerDb,
-}
-
-impl<E: poem::Endpoint> poem::Middleware<E> for CentralServerAuthMiddleware {
-    type Output = CentralServerAuthEndpoint<E>;
-
-    fn transform(&self, ep: E) -> Self::Output {
-        CentralServerAuthEndpoint {
-            ep,
-            db: self.db.clone(),
-        }
-    }
-}
-
-pub struct CentralServerAuthEndpoint<E> {
-    ep: E,
-    db: CentralServerDb,
-}
-
-impl<E: poem::Endpoint> poem::Endpoint for CentralServerAuthEndpoint<E> {
-    type Output = Response;
-
-    async fn call(&self, mut req: poem::Request) -> poem::Result<Self::Output> {
-        let auth_header = req
-            .headers()
-            .get("Authorization")
-            .and_then(|v| v.to_str().ok());
-
-        if let Some(header) = auth_header {
-            if let Some(token) = common::headers::parse_api_key_header(header) {
-                match self.db.validate_api_key(token).await {
-                    Ok(Some(roles)) => {
-                        req.extensions_mut()
-                            .insert(common::AuthenticatedUser::new(None, roles));
-                    }
-                    _ => {
-                        return Ok(Response::builder()
-                            .status(StatusCode::UNAUTHORIZED)
-                            .content_type("application/json")
-                            .body(r#"{"error":{"code":"invalid_api_key","message":"The API key was not found or is invalid"}}"#));
-                    }
-                }
-            } else {
-                return Ok(Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .content_type("application/json")
-                    .body(r#"{"error":{"code":"invalid_authorization_header","message":"Invalid Authorization header format"}}"#));
-            }
-        } else if std::env::var("XROAD_REQUIRE_API_KEY").as_deref() == Ok("true") {
-            let path = req.uri().path();
-            if !path.starts_with("/swagger-ui")
-                && !path.ends_with("/openapi.json")
-                && !path.contains("shared-params.xml")
-                && !path.ends_with("/status")
-            {
-                return Ok(Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .content_type("application/json")
-                    .body(r#"{"error":{"code":"missing_api_key","message":"Missing required Authorization header"}}"#));
-            }
-        }
-
-        let resp = self.ep.call(req).await?;
-        Ok(resp.into_response())
-    }
 }
 
 pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {

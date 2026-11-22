@@ -98,7 +98,7 @@ mod tests {
                 x_request_id: Some("req-xyz-456".to_string()),
                 client_id_str: Some("DEV/COM/12345/CLIENT".to_string()),
                 service_id_str: Some("DEV/COM/12345/SERVICE".to_string()),
-                discriminator: "REST".to_string(),
+                discriminator: common::MessageProtocol::Rest,
                 message_hash: "abcd1234hash".to_string(),
                 signature_hash: Some("sighash123".to_string()),
                 message_body: Some(r#"{"hello": "world"}"#.to_string()),

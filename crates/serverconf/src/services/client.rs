@@ -1,7 +1,7 @@
 use crate::entities::{
     access_right, certificate, client, endpoint, group_member, service, service_description,
 };
-use common::{XRoadError, XRoadResult};
+use common::{ClientStatus, XRoadError, XRoadResult};
 use identifiers::ClientId;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
@@ -26,7 +26,7 @@ impl ClientService {
             member_class: Set(client_id.member_class.clone()),
             member_code: Set(client_id.member_code.clone()),
             subsystem_code: Set(client_id.subsystem_code.clone()),
-            client_status: Set("REGISTERED".to_string()),
+            client_status: Set(ClientStatus::Registered.to_string()),
             is_authentication: Set(is_auth),
             ..Default::default()
         };

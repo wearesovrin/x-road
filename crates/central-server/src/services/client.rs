@@ -1,5 +1,5 @@
 use crate::entities::{member, subsystem};
-use common::XRoadResult;
+use common::{ClientStatus, XRoadResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -33,7 +33,7 @@ impl ClientService {
                 member_class: m.member_class.clone(),
                 member_code: m.member_code.clone(),
                 subsystem_code: None,
-                status: "REGISTERED".to_string(),
+                status: ClientStatus::Registered.to_string(),
             });
 
             let subs = subsystem::Entity::find()
@@ -55,7 +55,7 @@ impl ClientService {
                     member_class: m.member_class.clone(),
                     member_code: m.member_code.clone(),
                     subsystem_code: Some(s.subsystem_code),
-                    status: "REGISTERED".to_string(),
+                    status: ClientStatus::Registered.to_string(),
                 });
             }
         }

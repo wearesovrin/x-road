@@ -1,5 +1,5 @@
 use crate::entities::log_record;
-use common::{XRoadError, XRoadResult};
+use common::{MessageProtocol, XRoadError, XRoadResult};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
@@ -12,7 +12,7 @@ pub struct NewLogRecord {
     pub x_request_id: Option<String>,
     pub client_id_str: Option<String>,
     pub service_id_str: Option<String>,
-    pub discriminator: String,
+    pub discriminator: MessageProtocol,
     pub message_hash: String,
     pub signature_hash: Option<String>,
     pub message_body: Option<String>,
@@ -32,7 +32,7 @@ impl LogService {
             x_request_id: Set(record.x_request_id),
             client_id_str: Set(record.client_id_str),
             service_id_str: Set(record.service_id_str),
-            discriminator: Set(record.discriminator),
+            discriminator: Set(record.discriminator.to_string()),
             message_hash: Set(record.message_hash),
             signature_hash: Set(record.signature_hash),
             message_body: Set(record.message_body),
