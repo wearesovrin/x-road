@@ -1,7 +1,6 @@
 use crate::entities::{member, subsystem};
 use common::XRoadResult;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClientItem {
@@ -13,23 +12,13 @@ pub struct ClientItem {
     pub status: String,
 }
 
-#[derive(Clone)]
-pub struct ClientService {
-    db: Arc<DatabaseConnection>,
-}
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ClientService;
 
 impl ClientService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self { db }
-    }
-
-    pub fn conn(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
-    pub async fn list_all_clients(&self) -> XRoadResult<Vec<ClientItem>> {
+    pub async fn list_all_clients(db: &DatabaseConnection) -> XRoadResult<Vec<ClientItem>> {
         let members = member::Entity::find()
-            .all(self.conn())
+            .all(db)
             .await
             .map_err(|e| common::XRoadError::Database(format!("Failed to list members: {e}")))?;
 
@@ -49,7 +38,7 @@ impl ClientService {
 
             let subs = subsystem::Entity::find()
                 .filter(subsystem::Column::MemberId.eq(m.id))
-                .all(self.conn())
+                .all(db)
                 .await
                 .map_err(|e| {
                     common::XRoadError::Database(format!("Failed to list subsystems: {e}"))

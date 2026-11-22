@@ -1,5 +1,5 @@
-use crate::admin_api::{AdminApiState, admin_api_app};
 use crate::config::SecurityServerConfig;
+use crate::handlers::{AdminApiState, admin_api_app};
 use common::XRoadResult;
 use globalconf::GlobalConf;
 use messagelog::MessageLogDb;

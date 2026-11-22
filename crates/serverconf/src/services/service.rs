@@ -4,40 +4,24 @@ use crate::services::client::ClientService;
 use common::{XRoadError, XRoadResult};
 use identifiers::ClientId;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use std::sync::Arc;
 
 /// Service for managing services and service descriptions in Security Server configuration.
-#[derive(Clone)]
-pub struct ServiceService {
-    db: Arc<DatabaseConnection>,
-    clients: ClientService,
-}
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ServiceService;
 
 impl ServiceService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self {
-            db: db.clone(),
-            clients: ClientService::new(db),
-        }
-    }
-
-    fn raw_connection(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     /// Registers a service for a client.
     pub async fn add_service(
-        &self,
+        db: &DatabaseConnection,
         client_id: &ClientId,
         service_code: &str,
         service_version: Option<&str>,
         url: &str,
         service_type: ServiceType,
     ) -> XRoadResult<()> {
-        let client_model =
-            self.clients.get_client(client_id).await?.ok_or_else(|| {
-                XRoadError::Configuration(format!("Client not found: {client_id}"))
-            })?;
+        let client_model = ClientService::get_client(db, client_id)
+            .await?
+            .ok_or_else(|| XRoadError::Configuration(format!("Client not found: {client_id}")))?;
 
         let desc = service_description::ActiveModel {
             client_id: Set(client_model.id),
@@ -47,7 +31,7 @@ impl ServiceService {
             disabled_notice: Set(None),
             ..Default::default()
         }
-        .insert(self.raw_connection())
+        .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to insert service description: {e}")))?;
 
@@ -60,7 +44,7 @@ impl ServiceService {
             timeout: Set(60),
             ..Default::default()
         }
-        .insert(self.raw_connection())
+        .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to insert service: {e}")))?;
 
@@ -69,44 +53,43 @@ impl ServiceService {
 
     /// Lists service descriptions for a client.
     pub async fn list_service_descriptions(
-        &self,
+        db: &DatabaseConnection,
         client_id: &ClientId,
     ) -> XRoadResult<Vec<service_description::Model>> {
-        let client_model =
-            self.clients.get_client(client_id).await?.ok_or_else(|| {
-                XRoadError::Configuration(format!("Client not found: {client_id}"))
-            })?;
+        let client_model = ClientService::get_client(db, client_id)
+            .await?
+            .ok_or_else(|| XRoadError::Configuration(format!("Client not found: {client_id}")))?;
 
         service_description::Entity::find()
             .filter(service_description::Column::ClientId.eq(client_model.id))
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service descriptions: {e}")))
     }
 
     /// Gets a service description by ID.
     pub async fn get_service_description(
-        &self,
+        db: &DatabaseConnection,
         id: i64,
     ) -> XRoadResult<Option<service_description::Model>> {
         service_description::Entity::find_by_id(id)
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service description: {e}")))
     }
 
     /// Deletes a service description and its services.
-    pub async fn delete_service_description(&self, id: i64) -> XRoadResult<()> {
+    pub async fn delete_service_description(db: &DatabaseConnection, id: i64) -> XRoadResult<()> {
         service::Entity::delete_many()
             .filter(service::Column::ServiceDescriptionId.eq(id))
-            .exec(self.raw_connection())
+            .exec(db)
             .await
             .map_err(|e| {
                 XRoadError::Database(format!("Failed to delete associated services: {e}"))
             })?;
 
         service_description::Entity::delete_by_id(id)
-            .exec(self.raw_connection())
+            .exec(db)
             .await
             .map_err(|e| {
                 XRoadError::Database(format!("Failed to delete service description: {e}"))
@@ -116,13 +99,13 @@ impl ServiceService {
 
     /// Enables or disables a service description.
     pub async fn set_service_description_disabled(
-        &self,
+        db: &DatabaseConnection,
         id: i64,
         disabled: bool,
         notice: Option<&str>,
     ) -> XRoadResult<()> {
         let desc = service_description::Entity::find_by_id(id)
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service description: {e}")))?
             .ok_or_else(|| {
@@ -132,7 +115,7 @@ impl ServiceService {
         let mut active: service_description::ActiveModel = desc.into();
         active.disabled = Set(disabled);
         active.disabled_notice = Set(notice.map(ToString::to_string));
-        active.update(self.raw_connection()).await.map_err(|e| {
+        active.update(db).await.map_err(|e| {
             XRoadError::Database(format!("Failed to update service description: {e}"))
         })?;
         Ok(())
@@ -140,31 +123,39 @@ impl ServiceService {
 
     /// Lists services registered under a client.
     pub async fn list_services_for_client(
-        &self,
+        db: &DatabaseConnection,
         client_id: &ClientId,
     ) -> XRoadResult<Vec<service::Model>> {
-        let descriptions = self.list_service_descriptions(client_id).await?;
+        let descriptions = Self::list_service_descriptions(db, client_id).await?;
         let desc_ids: Vec<i64> = descriptions.into_iter().map(|d| d.id).collect();
 
         service::Entity::find()
             .filter(service::Column::ServiceDescriptionId.is_in(desc_ids))
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to list client services: {e}")))
     }
 
     /// Gets service by ID.
-    pub async fn get_service_by_id(&self, id: i64) -> XRoadResult<Option<service::Model>> {
+    pub async fn get_service_by_id(
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> XRoadResult<Option<service::Model>> {
         service::Entity::find_by_id(id)
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service: {e}")))
     }
 
     /// Updates service URL and timeout.
-    pub async fn update_service(&self, id: i64, url: &str, timeout: i32) -> XRoadResult<()> {
+    pub async fn update_service(
+        db: &DatabaseConnection,
+        id: i64,
+        url: &str,
+        timeout: i32,
+    ) -> XRoadResult<()> {
         let svc = service::Entity::find_by_id(id)
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service: {e}")))?
             .ok_or_else(|| XRoadError::Configuration(format!("Service not found: {id}")))?;
@@ -173,7 +164,7 @@ impl ServiceService {
         active.url = Set(url.to_string());
         active.timeout = Set(timeout);
         active
-            .update(self.raw_connection())
+            .update(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to update service: {e}")))?;
         Ok(())
@@ -181,18 +172,17 @@ impl ServiceService {
 
     /// Deletes a service and its cascading access rights.
     pub async fn delete_service_cascade(
-        &self,
+        db: &DatabaseConnection,
         client_id: &ClientId,
         service_code: &str,
     ) -> XRoadResult<()> {
-        let client_model =
-            self.clients.get_client(client_id).await?.ok_or_else(|| {
-                XRoadError::Configuration(format!("Client not found: {client_id}"))
-            })?;
+        let client_model = ClientService::get_client(db, client_id)
+            .await?
+            .ok_or_else(|| XRoadError::Configuration(format!("Client not found: {client_id}")))?;
 
         let descriptions = service_description::Entity::find()
             .filter(service_description::Column::ClientId.eq(client_model.id))
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| {
                 XRoadError::Database(format!("Failed to query service descriptions: {e}"))
@@ -202,7 +192,7 @@ impl ServiceService {
             let svc = service::Entity::find()
                 .filter(service::Column::ServiceDescriptionId.eq(desc.id))
                 .filter(service::Column::ServiceCode.eq(service_code))
-                .one(self.raw_connection())
+                .one(db)
                 .await
                 .map_err(|e| XRoadError::Database(format!("Failed to query service: {e}")))?;
 
@@ -210,11 +200,11 @@ impl ServiceService {
                 let svc_prefix = format!("{}/{}", client_id, service_code);
                 let _ = access_right::Entity::delete_many()
                     .filter(access_right::Column::ServiceIdStr.contains(&svc_prefix))
-                    .exec(self.raw_connection())
+                    .exec(db)
                     .await;
 
                 service::Entity::delete_by_id(s.id)
-                    .exec(self.raw_connection())
+                    .exec(db)
                     .await
                     .map_err(|e| XRoadError::Database(format!("Failed to delete service: {e}")))?;
             }

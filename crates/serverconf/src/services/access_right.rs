@@ -2,26 +2,15 @@ use crate::entities::access_right;
 use common::{XRoadError, XRoadResult};
 use identifiers::{ClientId, ServiceId};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use std::sync::Arc;
 
 /// Service for managing service access rights in Security Server configuration.
-#[derive(Clone)]
-pub struct AccessRightService {
-    db: Arc<DatabaseConnection>,
-}
+#[derive(Clone, Copy, Default, Debug)]
+pub struct AccessRightService;
 
 impl AccessRightService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self { db }
-    }
-
-    fn raw_connection(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     /// Grants access for a client to invoke a service.
     pub async fn grant_access(
-        &self,
+        db: &DatabaseConnection,
         service_id: &ServiceId,
         client_id: &ClientId,
     ) -> XRoadResult<()> {
@@ -31,7 +20,7 @@ impl AccessRightService {
         let existing = access_right::Entity::find()
             .filter(access_right::Column::ServiceIdStr.eq(&service_id_str))
             .filter(access_right::Column::SubjectClientIdStr.eq(&client_id_str))
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Access right query failed: {e}")))?;
 
@@ -42,7 +31,7 @@ impl AccessRightService {
                 rights_given: Set(chrono::Utc::now()),
                 ..Default::default()
             }
-            .insert(self.raw_connection())
+            .insert(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to grant access: {e}")))?;
         }
@@ -52,14 +41,14 @@ impl AccessRightService {
 
     /// Revokes access for a client to invoke a service.
     pub async fn revoke_access(
-        &self,
+        db: &DatabaseConnection,
         service_id: &ServiceId,
         client_id: &ClientId,
     ) -> XRoadResult<()> {
         access_right::Entity::delete_many()
             .filter(access_right::Column::ServiceIdStr.eq(service_id.to_string()))
             .filter(access_right::Column::SubjectClientIdStr.eq(client_id.to_string()))
-            .exec(self.raw_connection())
+            .exec(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to revoke access: {e}")))?;
 
@@ -68,12 +57,12 @@ impl AccessRightService {
 
     /// Lists subjects (clients) with access rights to a service.
     pub async fn list_service_access_rights(
-        &self,
+        db: &DatabaseConnection,
         service_id_str: &str,
     ) -> XRoadResult<Vec<String>> {
         let rights = access_right::Entity::find()
             .filter(access_right::Column::ServiceIdStr.eq(service_id_str))
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query access rights: {e}")))?;
 

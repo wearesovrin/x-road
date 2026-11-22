@@ -3,25 +3,15 @@ use common::{XRoadError, XRoadResult};
 use identifiers::ClientId;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
 
-#[derive(Clone)]
-pub struct SecurityServerService {
-    db: Arc<DatabaseConnection>,
-}
+/// Service for managing Security Servers in Central Server.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct SecurityServerService;
 
 impl SecurityServerService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self { db }
-    }
-
-    pub fn conn(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     /// Registers a security server under a member owner.
     pub async fn register_security_server(
-        &self,
+        db: &DatabaseConnection,
         owner_id: i64,
         server_code: &str,
         address: &str,
@@ -35,25 +25,25 @@ impl SecurityServerService {
             updated_at: Set(now),
             ..Default::default()
         }
-        .insert(self.conn())
+        .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to register security server: {e}")))
     }
 
     pub async fn get_security_server(
-        &self,
+        db: &DatabaseConnection,
         id: i64,
     ) -> XRoadResult<Option<security_server::Model>> {
         security_server::Entity::find_by_id(id)
-            .one(self.conn())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to get security server: {e}")))
     }
 
-    pub async fn delete_security_server(&self, id: i64) -> XRoadResult<bool> {
+    pub async fn delete_security_server(db: &DatabaseConnection, id: i64) -> XRoadResult<bool> {
         security_server_client::Entity::delete_many()
             .filter(security_server_client::Column::SecurityServerId.eq(id))
-            .exec(self.conn())
+            .exec(db)
             .await
             .map_err(|e| {
                 XRoadError::Database(format!("Failed to delete security server clients: {e}"))
@@ -61,30 +51,32 @@ impl SecurityServerService {
 
         security_server_auth_cert::Entity::delete_many()
             .filter(security_server_auth_cert::Column::SecurityServerId.eq(id))
-            .exec(self.conn())
+            .exec(db)
             .await
             .map_err(|e| {
                 XRoadError::Database(format!("Failed to delete security server auth certs: {e}"))
             })?;
 
         let res = security_server::Entity::delete_by_id(id)
-            .exec(self.conn())
+            .exec(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to delete security server: {e}")))?;
         Ok(res.rows_affected > 0)
     }
 
     /// Lists all security servers.
-    pub async fn list_security_servers(&self) -> XRoadResult<Vec<security_server::Model>> {
+    pub async fn list_security_servers(
+        db: &DatabaseConnection,
+    ) -> XRoadResult<Vec<security_server::Model>> {
         security_server::Entity::find()
-            .all(self.conn())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to list security servers: {e}")))
     }
 
     /// Associates a client with a security server.
     pub async fn add_security_server_client(
-        &self,
+        db: &DatabaseConnection,
         security_server_id: i64,
         client_id: &ClientId,
     ) -> XRoadResult<()> {
@@ -94,7 +86,7 @@ impl SecurityServerService {
             enabled: Set(true),
             ..Default::default()
         }
-        .insert(self.conn())
+        .insert(db)
         .await
         .map_err(|e| {
             XRoadError::Database(format!(
@@ -106,33 +98,33 @@ impl SecurityServerService {
     }
 
     pub async fn list_security_server_clients(
-        &self,
+        db: &DatabaseConnection,
         security_server_id: i64,
     ) -> XRoadResult<Vec<String>> {
         let clients = security_server_client::Entity::find()
             .filter(security_server_client::Column::SecurityServerId.eq(security_server_id))
-            .all(self.conn())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to list server clients: {e}")))?;
         Ok(clients.into_iter().map(|c| c.client_id_str).collect())
     }
 
     pub async fn remove_security_server_client(
-        &self,
+        db: &DatabaseConnection,
         security_server_id: i64,
         client_id_str: &str,
     ) -> XRoadResult<bool> {
         let res = security_server_client::Entity::delete_many()
             .filter(security_server_client::Column::SecurityServerId.eq(security_server_id))
             .filter(security_server_client::Column::ClientIdStr.eq(client_id_str))
-            .exec(self.conn())
+            .exec(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to delete server client: {e}")))?;
         Ok(res.rows_affected > 0)
     }
 
     pub async fn add_security_server_auth_cert(
-        &self,
+        db: &DatabaseConnection,
         security_server_id: i64,
         cert_pem: &str,
     ) -> XRoadResult<security_server_auth_cert::Model> {
@@ -147,25 +139,28 @@ impl SecurityServerService {
             created_at: Set(chrono::Utc::now()),
             ..Default::default()
         }
-        .insert(self.conn())
+        .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to add auth cert: {e}")))
     }
 
     pub async fn list_security_server_auth_certs(
-        &self,
+        db: &DatabaseConnection,
         security_server_id: i64,
     ) -> XRoadResult<Vec<security_server_auth_cert::Model>> {
         security_server_auth_cert::Entity::find()
             .filter(security_server_auth_cert::Column::SecurityServerId.eq(security_server_id))
-            .all(self.conn())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to list auth certs: {e}")))
     }
 
-    pub async fn delete_security_server_auth_cert(&self, cert_id: i64) -> XRoadResult<bool> {
+    pub async fn delete_security_server_auth_cert(
+        db: &DatabaseConnection,
+        cert_id: i64,
+    ) -> XRoadResult<bool> {
         let res = security_server_auth_cert::Entity::delete_by_id(cert_id)
-            .exec(self.conn())
+            .exec(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to delete auth cert: {e}")))?;
         Ok(res.rows_affected > 0)

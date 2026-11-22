@@ -1,9 +1,11 @@
-pub mod admin_api;
 pub mod config;
+pub mod handlers;
 pub mod node;
 
-pub use admin_api::{AdminApi, AdminApiState, ServerStatus, admin_api_app};
 pub use config::SecurityServerConfig;
+pub use handlers::{AdminApi, AdminApiState, ServerStatus, admin_api_app};
+// Backward-compatible alias
+pub use handlers as admin_api;
 pub use node::SecurityServerNode;
 
 use poem::Server;

@@ -3,26 +3,15 @@ use common::{XRoadError, XRoadResult};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
-use std::sync::Arc;
 
 /// Service for managing attachments in Message Log.
-#[derive(Clone)]
-pub struct AttachmentService {
-    db: Arc<DatabaseConnection>,
-}
+#[derive(Clone, Copy, Default, Debug)]
+pub struct AttachmentService;
 
 impl AttachmentService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self { db }
-    }
-
-    fn raw_connection(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     /// Stores an attachment associated with a log record.
     pub async fn add_attachment(
-        &self,
+        db: &DatabaseConnection,
         logrecord_id: i64,
         attachment_no: i32,
         hash: &str,
@@ -35,7 +24,7 @@ impl AttachmentService {
             data: Set(data.map(|d| d.to_vec())),
             ..Default::default()
         }
-        .insert(self.raw_connection())
+        .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to insert attachment: {e}")))?;
 
@@ -43,11 +32,14 @@ impl AttachmentService {
     }
 
     /// Retrieves all attachments for a log record.
-    pub async fn get_attachments(&self, logrecord_id: i64) -> XRoadResult<Vec<attachment::Model>> {
+    pub async fn get_attachments(
+        db: &DatabaseConnection,
+        logrecord_id: i64,
+    ) -> XRoadResult<Vec<attachment::Model>> {
         attachment::Entity::find()
             .filter(attachment::Column::LogrecordId.eq(logrecord_id))
             .order_by_asc(attachment::Column::AttachmentNo)
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query attachments: {e}")))
     }

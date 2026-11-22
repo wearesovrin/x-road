@@ -11,51 +11,37 @@ use globalconf::{
 use identifiers::ClientId;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Service for managing System Parameters, configuration anchor, and shared-params export.
-#[derive(Clone)]
-pub struct SystemParameterService {
-    db: Arc<DatabaseConnection>,
-    members: MemberService,
-    subsystems: SubsystemService,
-    security_servers: SecurityServerService,
-    global_groups: GlobalGroupService,
-}
+#[derive(Clone, Copy, Default, Debug)]
+pub struct SystemParameterService;
 
 impl SystemParameterService {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
-        Self {
-            db: db.clone(),
-            members: MemberService::new(db.clone()),
-            subsystems: SubsystemService::new(db.clone()),
-            security_servers: SecurityServerService::new(db.clone()),
-            global_groups: GlobalGroupService::new(db),
-        }
-    }
-
-    fn raw_connection(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
-    pub async fn get_system_parameter(&self, key: &str) -> XRoadResult<Option<String>> {
+    pub async fn get_system_parameter(
+        db: &DatabaseConnection,
+        key: &str,
+    ) -> XRoadResult<Option<String>> {
         system_parameter::Entity::find_by_id(key.to_string())
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to get system parameter: {e}")))
             .map(|opt| opt.map(|m| m.value))
     }
 
-    pub async fn set_system_parameter(&self, key: &str, value: &str) -> XRoadResult<()> {
+    pub async fn set_system_parameter(
+        db: &DatabaseConnection,
+        key: &str,
+        value: &str,
+    ) -> XRoadResult<()> {
         let existing = system_parameter::Entity::find_by_id(key.to_string())
-            .one(self.raw_connection())
+            .one(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to check system parameter: {e}")))?;
 
         if let Some(m) = existing {
             let mut active: system_parameter::ActiveModel = m.into();
             active.value = Set(value.to_string());
-            active.update(self.raw_connection()).await.map_err(|e| {
+            active.update(db).await.map_err(|e| {
                 XRoadError::Database(format!("Failed to update system parameter: {e}"))
             })?;
         } else {
@@ -63,26 +49,28 @@ impl SystemParameterService {
                 key: Set(key.to_string()),
                 value: Set(value.to_string()),
             }
-            .insert(self.raw_connection())
+            .insert(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to insert system parameter: {e}")))?;
         }
         Ok(())
     }
 
-    pub async fn get_server_address(&self) -> XRoadResult<String> {
-        Ok(self
-            .get_system_parameter("server_address")
+    pub async fn get_server_address(db: &DatabaseConnection) -> XRoadResult<String> {
+        Ok(Self::get_system_parameter(db, "server_address")
             .await?
             .unwrap_or_else(|| "127.0.0.1".to_string()))
     }
 
-    pub async fn set_server_address(&self, address: &str) -> XRoadResult<()> {
-        self.set_system_parameter("server_address", address).await
+    pub async fn set_server_address(db: &DatabaseConnection, address: &str) -> XRoadResult<()> {
+        Self::set_system_parameter(db, "server_address", address).await
     }
 
-    pub async fn generate_anchor_xml(&self, instance_id: &str) -> XRoadResult<String> {
-        let addr = self.get_server_address().await?;
+    pub async fn generate_anchor_xml(
+        db: &DatabaseConnection,
+        instance_id: &str,
+    ) -> XRoadResult<String> {
+        let addr = Self::get_server_address(db).await?;
         let anchor = globalconf::ConfigurationAnchor {
             instance_identifier: instance_id.to_string(),
             generated_at: chrono::Utc::now(),
@@ -93,19 +81,22 @@ impl SystemParameterService {
     }
 
     /// Exports database entities into the standard `SharedParams` model.
-    pub async fn export_shared_params(&self, instance_id: &str) -> XRoadResult<SharedParams> {
+    pub async fn export_shared_params(
+        db: &DatabaseConnection,
+        instance_id: &str,
+    ) -> XRoadResult<SharedParams> {
         let mut client_str_to_xml_id = HashMap::new();
         let mut shared_members = Vec::new();
 
         // 1. Members and subsystems
-        let members = self.members.list_members().await?;
+        let members = MemberService::list_members(db).await?;
         for m in members {
             let member_client =
                 ClientId::member_unchecked(instance_id, &m.member_class, &m.member_code);
             let member_xml_id = format!("id-m-{}", m.id);
             client_str_to_xml_id.insert(member_client.to_string(), member_xml_id.clone());
 
-            let subsystems = self.subsystems.list_subsystems(m.id).await?;
+            let subsystems = SubsystemService::list_subsystems(db, m.id).await?;
             let mut shared_subs = Vec::new();
             for sub in subsystems {
                 let sub_client = ClientId::subsystem_unchecked(
@@ -134,12 +125,12 @@ impl SystemParameterService {
         }
 
         // 2. Security Servers
-        let servers = self.security_servers.list_security_servers().await?;
+        let servers = SecurityServerService::list_security_servers(db).await?;
         let mut shared_sec_servers = Vec::new();
         for s in servers {
             let client_links = security_server_client::Entity::find()
                 .filter(security_server_client::Column::SecurityServerId.eq(s.id))
-                .all(self.raw_connection())
+                .all(db)
                 .await
                 .map_err(|e| {
                     XRoadError::Database(format!("Failed to list security server clients: {e}"))
@@ -152,9 +143,7 @@ impl SystemParameterService {
                 }
             }
 
-            let auth_certs = self
-                .security_servers
-                .list_security_server_auth_certs(s.id)
+            let auth_certs = SecurityServerService::list_security_server_auth_certs(db, s.id)
                 .await
                 .unwrap_or_default();
             let auth_cert_hashes: Vec<String> =
@@ -171,7 +160,7 @@ impl SystemParameterService {
 
         // 3. Approved CAs
         let cas = approved_ca::Entity::find()
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query approved CAs: {e}")))?;
         let shared_cas: Vec<SharedApprovedCa> = cas
@@ -189,7 +178,7 @@ impl SystemParameterService {
 
         // 4. Approved TSAs
         let tsas = approved_tsa::Entity::find()
-            .all(self.raw_connection())
+            .all(db)
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query approved TSAs: {e}")))?;
         let shared_tsas: Vec<SharedApprovedTsa> = tsas
@@ -202,13 +191,11 @@ impl SystemParameterService {
             .collect();
 
         // 5. Global Groups
-        let groups = self.global_groups.list_global_groups().await?;
+        let groups = GlobalGroupService::list_global_groups(db).await?;
         let mut shared_groups = Vec::new();
         for g in groups {
-            let member_strs = self
-                .global_groups
-                .list_global_group_members(&g.group_code)
-                .await?;
+            let member_strs =
+                GlobalGroupService::list_global_group_members(db, &g.group_code).await?;
             let members: Vec<ClientId> = member_strs
                 .into_iter()
                 .filter_map(|s| s.parse::<ClientId>().ok())
@@ -233,8 +220,11 @@ impl SystemParameterService {
     }
 
     /// Generates standard `shared-params.xml` for this instance.
-    pub async fn generate_shared_params_xml(&self, instance_id: &str) -> XRoadResult<String> {
-        let params = self.export_shared_params(instance_id).await?;
+    pub async fn generate_shared_params_xml(
+        db: &DatabaseConnection,
+        instance_id: &str,
+    ) -> XRoadResult<String> {
+        let params = Self::export_shared_params(db, instance_id).await?;
         Ok(params.to_xml())
     }
 }

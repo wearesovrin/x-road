@@ -32,28 +32,13 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ServerConf {
     pub raw_db: Arc<DatabaseConnection>,
-    pub clients: ClientService,
-    pub services: ServiceService,
-    pub access_rights: AccessRightService,
-    pub endpoints: EndpointService,
-    pub local_groups: LocalGroupService,
-    pub certificates: CertificateService,
-    pub api_keys: ApiKeyService,
 }
 
 impl ServerConf {
     /// Creates a new `ServerConf` from an existing SeaORM database connection.
     pub fn new(db: DatabaseConnection) -> Self {
-        let db_arc = Arc::new(db);
         Self {
-            clients: ClientService::new(db_arc.clone()),
-            services: ServiceService::new(db_arc.clone()),
-            access_rights: AccessRightService::new(db_arc.clone()),
-            endpoints: EndpointService::new(db_arc.clone()),
-            local_groups: LocalGroupService::new(db_arc.clone()),
-            certificates: CertificateService::new(db_arc.clone()),
-            api_keys: ApiKeyService::new(db_arc.clone()),
-            raw_db: db_arc,
+            raw_db: Arc::new(db),
         }
     }
 
@@ -84,18 +69,18 @@ impl ServerConf {
         client_id: &ClientId,
         is_auth: bool,
     ) -> XRoadResult<client_entity::Model> {
-        self.clients.add_client(client_id, is_auth).await
+        ClientService::add_client(&self.raw_db, client_id, is_auth).await
     }
 
     pub async fn get_client(
         &self,
         client_id: &ClientId,
     ) -> XRoadResult<Option<client_entity::Model>> {
-        self.clients.get_client(client_id).await
+        ClientService::get_client(&self.raw_db, client_id).await
     }
 
     pub async fn list_clients(&self) -> XRoadResult<Vec<ClientId>> {
-        self.clients.list_clients().await
+        ClientService::list_clients(&self.raw_db).await
     }
 
     pub async fn add_service(
@@ -106,9 +91,15 @@ impl ServerConf {
         url: &str,
         service_type: ServiceType,
     ) -> XRoadResult<()> {
-        self.services
-            .add_service(client_id, service_code, service_version, url, service_type)
-            .await
+        ServiceService::add_service(
+            &self.raw_db,
+            client_id,
+            service_code,
+            service_version,
+            url,
+            service_type,
+        )
+        .await
     }
 
     pub async fn grant_access(
@@ -116,7 +107,7 @@ impl ServerConf {
         service_id: &ServiceId,
         client_id: &ClientId,
     ) -> XRoadResult<()> {
-        self.access_rights.grant_access(service_id, client_id).await
+        AccessRightService::grant_access(&self.raw_db, service_id, client_id).await
     }
 
     pub async fn revoke_access(
@@ -124,9 +115,7 @@ impl ServerConf {
         service_id: &ServiceId,
         client_id: &ClientId,
     ) -> XRoadResult<()> {
-        self.access_rights
-            .revoke_access(service_id, client_id)
-            .await
+        AccessRightService::revoke_access(&self.raw_db, service_id, client_id).await
     }
 
     pub async fn create_api_key(
@@ -135,32 +124,30 @@ impl ServerConf {
         label: Option<&str>,
         roles: &[&str],
     ) -> XRoadResult<String> {
-        self.api_keys
-            .create_api_key(encoded_key, label, roles)
-            .await
+        ApiKeyService::create_api_key(&self.raw_db, encoded_key, label, roles).await
     }
 
     pub async fn validate_api_key(&self, key_or_token: &str) -> XRoadResult<Option<Vec<String>>> {
-        self.api_keys.validate_api_key(key_or_token).await
+        ApiKeyService::validate_api_key(&self.raw_db, key_or_token).await
     }
 
     pub async fn list_api_keys(&self) -> XRoadResult<Vec<(api_key_entity::Model, Vec<String>)>> {
-        self.api_keys.list_api_keys().await
+        ApiKeyService::list_api_keys(&self.raw_db).await
     }
 
     pub async fn get_api_key(
         &self,
         id: i64,
     ) -> XRoadResult<Option<(api_key_entity::Model, Vec<String>)>> {
-        self.api_keys.get_api_key(id).await
+        ApiKeyService::get_api_key(&self.raw_db, id).await
     }
 
     pub async fn update_api_key_roles(&self, id: i64, roles: &[&str]) -> XRoadResult<()> {
-        self.api_keys.update_api_key_roles(id, roles).await
+        ApiKeyService::update_api_key_roles(&self.raw_db, id, roles).await
     }
 
     pub async fn revoke_api_key(&self, id: i64) -> XRoadResult<()> {
-        self.api_keys.revoke_api_key(id).await
+        ApiKeyService::revoke_api_key(&self.raw_db, id).await
     }
 
     pub async fn store_certificate(
@@ -168,17 +155,15 @@ impl ServerConf {
         client_id: &ClientId,
         cert_der: &[u8],
     ) -> XRoadResult<()> {
-        self.certificates
-            .store_certificate(client_id, cert_der)
-            .await
+        CertificateService::store_certificate(&self.raw_db, client_id, cert_der).await
     }
 
     pub async fn get_certificates(&self, client_id: &ClientId) -> XRoadResult<Vec<Vec<u8>>> {
-        self.certificates.get_certificates(client_id).await
+        CertificateService::get_certificates(&self.raw_db, client_id).await
     }
 
     pub async fn delete_client(&self, client_id: &ClientId) -> XRoadResult<()> {
-        self.clients.delete_client(client_id).await
+        ClientService::delete_client(&self.raw_db, client_id).await
     }
 
     pub async fn delete_service_cascade(
@@ -186,39 +171,37 @@ impl ServerConf {
         client_id: &ClientId,
         service_code: &str,
     ) -> XRoadResult<()> {
-        self.services
-            .delete_service_cascade(client_id, service_code)
-            .await
+        ServiceService::delete_service_cascade(&self.raw_db, client_id, service_code).await
     }
 
     pub async fn set_client_status(&self, client_id: &ClientId, status: &str) -> XRoadResult<()> {
-        self.clients.set_client_status(client_id, status).await
+        ClientService::set_client_status(&self.raw_db, client_id, status).await
     }
 
     pub async fn make_owner(&self, client_id: &ClientId) -> XRoadResult<()> {
-        self.clients.make_owner(client_id).await
+        ClientService::make_owner(&self.raw_db, client_id).await
     }
 
     pub async fn get_owner(&self) -> XRoadResult<Option<client_entity::Model>> {
-        self.clients.get_owner().await
+        ClientService::get_owner(&self.raw_db).await
     }
 
     pub async fn list_service_descriptions(
         &self,
         client_id: &ClientId,
     ) -> XRoadResult<Vec<service_description::Model>> {
-        self.services.list_service_descriptions(client_id).await
+        ServiceService::list_service_descriptions(&self.raw_db, client_id).await
     }
 
     pub async fn get_service_description(
         &self,
         id: i64,
     ) -> XRoadResult<Option<service_description::Model>> {
-        self.services.get_service_description(id).await
+        ServiceService::get_service_description(&self.raw_db, id).await
     }
 
     pub async fn delete_service_description(&self, id: i64) -> XRoadResult<()> {
-        self.services.delete_service_description(id).await
+        ServiceService::delete_service_description(&self.raw_db, id).await
     }
 
     pub async fn set_service_description_disabled(
@@ -227,33 +210,29 @@ impl ServerConf {
         disabled: bool,
         notice: Option<&str>,
     ) -> XRoadResult<()> {
-        self.services
-            .set_service_description_disabled(id, disabled, notice)
-            .await
+        ServiceService::set_service_description_disabled(&self.raw_db, id, disabled, notice).await
     }
 
     pub async fn list_services_for_client(
         &self,
         client_id: &ClientId,
     ) -> XRoadResult<Vec<service_entity::Model>> {
-        self.services.list_services_for_client(client_id).await
+        ServiceService::list_services_for_client(&self.raw_db, client_id).await
     }
 
     pub async fn get_service_by_id(&self, id: i64) -> XRoadResult<Option<service_entity::Model>> {
-        self.services.get_service_by_id(id).await
+        ServiceService::get_service_by_id(&self.raw_db, id).await
     }
 
     pub async fn update_service(&self, id: i64, url: &str, timeout: i32) -> XRoadResult<()> {
-        self.services.update_service(id, url, timeout).await
+        ServiceService::update_service(&self.raw_db, id, url, timeout).await
     }
 
     pub async fn list_service_access_rights(
         &self,
         service_id_str: &str,
     ) -> XRoadResult<Vec<String>> {
-        self.access_rights
-            .list_service_access_rights(service_id_str)
-            .await
+        AccessRightService::list_service_access_rights(&self.raw_db, service_id_str).await
     }
 
     pub async fn add_endpoint(
@@ -263,21 +242,19 @@ impl ServerConf {
         method: &str,
         path: &str,
     ) -> XRoadResult<ep_entity::Model> {
-        self.endpoints
-            .add_endpoint(client_id, service_code, method, path)
-            .await
+        EndpointService::add_endpoint(&self.raw_db, client_id, service_code, method, path).await
     }
 
     pub async fn list_endpoints(&self, client_id: &ClientId) -> XRoadResult<Vec<ep_entity::Model>> {
-        self.endpoints.list_endpoints(client_id).await
+        EndpointService::list_endpoints(&self.raw_db, client_id).await
     }
 
     pub async fn get_endpoint(&self, id: i64) -> XRoadResult<Option<ep_entity::Model>> {
-        self.endpoints.get_endpoint(id).await
+        EndpointService::get_endpoint(&self.raw_db, id).await
     }
 
     pub async fn delete_endpoint(&self, id: i64) -> XRoadResult<()> {
-        self.endpoints.delete_endpoint(id).await
+        EndpointService::delete_endpoint(&self.raw_db, id).await
     }
 
     pub async fn grant_endpoint_access(
@@ -285,9 +262,7 @@ impl ServerConf {
         endpoint_id: i64,
         subject_id: &str,
     ) -> XRoadResult<()> {
-        self.endpoints
-            .grant_endpoint_access(endpoint_id, subject_id)
-            .await
+        EndpointService::grant_endpoint_access(&self.raw_db, endpoint_id, subject_id).await
     }
 
     pub async fn revoke_endpoint_access(
@@ -295,15 +270,11 @@ impl ServerConf {
         endpoint_id: i64,
         subject_id: &str,
     ) -> XRoadResult<()> {
-        self.endpoints
-            .revoke_endpoint_access(endpoint_id, subject_id)
-            .await
+        EndpointService::revoke_endpoint_access(&self.raw_db, endpoint_id, subject_id).await
     }
 
     pub async fn list_endpoint_access_rights(&self, endpoint_id: i64) -> XRoadResult<Vec<String>> {
-        self.endpoints
-            .list_endpoint_access_rights(endpoint_id)
-            .await
+        EndpointService::list_endpoint_access_rights(&self.raw_db, endpoint_id).await
     }
 
     pub async fn create_local_group(
@@ -312,8 +283,7 @@ impl ServerConf {
         group_code: &str,
         description: &str,
     ) -> XRoadResult<lg_entity::Model> {
-        self.local_groups
-            .create_local_group(client_id, group_code, description)
+        LocalGroupService::create_local_group(&self.raw_db, client_id, group_code, description)
             .await
     }
 
@@ -321,21 +291,19 @@ impl ServerConf {
         &self,
         client_id: &ClientId,
     ) -> XRoadResult<Vec<lg_entity::Model>> {
-        self.local_groups.list_local_groups(client_id).await
+        LocalGroupService::list_local_groups(&self.raw_db, client_id).await
     }
 
     pub async fn get_local_group(&self, id: i64) -> XRoadResult<Option<lg_entity::Model>> {
-        self.local_groups.get_local_group(id).await
+        LocalGroupService::get_local_group(&self.raw_db, id).await
     }
 
     pub async fn delete_local_group(&self, id: i64) -> XRoadResult<()> {
-        self.local_groups.delete_local_group(id).await
+        LocalGroupService::delete_local_group(&self.raw_db, id).await
     }
 
     pub async fn add_group_member(&self, group_id: i64, member_id: &ClientId) -> XRoadResult<()> {
-        self.local_groups
-            .add_group_member(group_id, member_id)
-            .await
+        LocalGroupService::add_group_member(&self.raw_db, group_id, member_id).await
     }
 
     pub async fn remove_group_member(
@@ -343,13 +311,11 @@ impl ServerConf {
         group_id: i64,
         member_id: &ClientId,
     ) -> XRoadResult<()> {
-        self.local_groups
-            .remove_group_member(group_id, member_id)
-            .await
+        LocalGroupService::remove_group_member(&self.raw_db, group_id, member_id).await
     }
 
     pub async fn list_group_members(&self, group_id: i64) -> XRoadResult<Vec<String>> {
-        self.local_groups.list_group_members(group_id).await
+        LocalGroupService::list_group_members(&self.raw_db, group_id).await
     }
 }
 
@@ -358,7 +324,7 @@ pub type DatabaseServerConf = ServerConf;
 #[tonic::async_trait]
 impl ServerConfProvider for ServerConf {
     async fn is_client_allowed(&self, client_id: &ClientId) -> XRoadResult<bool> {
-        let client = self.clients.get_client(client_id).await?;
+        let client = ClientService::get_client(&self.raw_db, client_id).await?;
         Ok(client
             .map(|c| c.client_status == "REGISTERED")
             .unwrap_or(false))
@@ -441,7 +407,7 @@ impl ServerConfProvider for ServerConf {
     }
 
     async fn list_services(&self, client_id: &ClientId) -> XRoadResult<Vec<ServiceId>> {
-        let models = self.services.list_services_for_client(client_id).await?;
+        let models = ServiceService::list_services_for_client(&self.raw_db, client_id).await?;
         let mut services = Vec::new();
         for m in models {
             if let Ok(svc) = ServiceId::new(

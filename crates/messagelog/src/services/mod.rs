@@ -15,19 +15,12 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct MessageLog {
     pub raw_db: Arc<DatabaseConnection>,
-    pub logs: LogService,
-    pub attachments: AttachmentService,
-    pub hash_chains: HashChainService,
 }
 
 impl MessageLog {
     pub fn new(db: DatabaseConnection) -> Self {
-        let db_arc = Arc::new(db);
         Self {
-            logs: LogService::new(db_arc.clone()),
-            attachments: AttachmentService::new(db_arc.clone()),
-            hash_chains: HashChainService::new(db_arc.clone()),
-            raw_db: db_arc,
+            raw_db: Arc::new(db),
         }
     }
 
@@ -51,32 +44,32 @@ impl MessageLog {
 
     // Direct access helper methods
     pub async fn log_message(&self, record: NewLogRecord) -> XRoadResult<i64> {
-        self.logs.log_message(record).await
+        LogService::log_message(&self.raw_db, record).await
     }
 
     pub async fn get_by_query_id(
         &self,
         query_id: &str,
     ) -> XRoadResult<Option<crate::entities::log_record::Model>> {
-        self.logs.get_by_query_id(query_id).await
+        LogService::get_by_query_id(&self.raw_db, query_id).await
     }
 
     pub async fn find_unarchived(
         &self,
         limit: u64,
     ) -> XRoadResult<Vec<crate::entities::log_record::Model>> {
-        self.logs.find_unarchived(limit).await
+        LogService::find_unarchived(&self.raw_db, limit).await
     }
 
     pub async fn mark_archived(&self, ids: &[i64]) -> XRoadResult<()> {
-        self.logs.mark_archived(ids).await
+        LogService::mark_archived(&self.raw_db, ids).await
     }
 
     pub async fn find_untimestamped(
         &self,
         limit: u64,
     ) -> XRoadResult<Vec<crate::entities::log_record::Model>> {
-        self.logs.find_untimestamped(limit).await
+        LogService::find_untimestamped(&self.raw_db, limit).await
     }
 
     pub async fn add_attachment(
@@ -86,8 +79,7 @@ impl MessageLog {
         hash: &str,
         data: Option<&[u8]>,
     ) -> XRoadResult<i64> {
-        self.attachments
-            .add_attachment(logrecord_id, attachment_no, hash, data)
+        AttachmentService::add_attachment(&self.raw_db, logrecord_id, attachment_no, hash, data)
             .await
     }
 
@@ -95,7 +87,7 @@ impl MessageLog {
         &self,
         logrecord_id: i64,
     ) -> XRoadResult<Vec<crate::entities::attachment::Model>> {
-        self.attachments.get_attachments(logrecord_id).await
+        AttachmentService::get_attachments(&self.raw_db, logrecord_id).await
     }
 
     pub async fn update_hash_chain(
@@ -104,9 +96,13 @@ impl MessageLog {
         hash_chain: &str,
         hash_chain_result: &str,
     ) -> XRoadResult<()> {
-        self.hash_chains
-            .update_hash_chain(logrecord_id, hash_chain, hash_chain_result)
-            .await
+        HashChainService::update_hash_chain(
+            &self.raw_db,
+            logrecord_id,
+            hash_chain,
+            hash_chain_result,
+        )
+        .await
     }
 
     pub async fn update_timestamp(
@@ -115,9 +111,13 @@ impl MessageLog {
         timestamp_record_id: i64,
         timestamp_hash_chain: &str,
     ) -> XRoadResult<()> {
-        self.hash_chains
-            .update_timestamp(record_ids, timestamp_record_id, timestamp_hash_chain)
-            .await
+        HashChainService::update_timestamp(
+            &self.raw_db,
+            record_ids,
+            timestamp_record_id,
+            timestamp_hash_chain,
+        )
+        .await
     }
 }
 
