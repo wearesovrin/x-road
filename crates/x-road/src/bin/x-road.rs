@@ -13,7 +13,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Start the complete unified Security Server node (Admin API, Client Proxy, Server Proxy)
-    #[command(alias = "admin", alias = "Admin")]
+    #[command(name = "security-server", alias = "admin")]
     SecurityServer {
         #[arg(long, env = "ADMIN_BIND_ADDR", default_value = "0.0.0.0:4000")]
         admin_bind: String,
@@ -29,7 +29,7 @@ enum Commands {
         default_server_proxy_url: Option<String>,
     },
     /// Start the Central Server daemon (OpenAPI Management & Global Configuration distribution)
-    #[command(alias = "central", alias = "Central")]
+    #[command(name = "central-server", alias = "central")]
     CentralServer {
         #[arg(short, long, env = "BIND_ADDR", default_value = "0.0.0.0:4001")]
         bind: String,

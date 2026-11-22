@@ -38,13 +38,13 @@ pub enum Commands {
         action: AsicAction,
     },
     /// Security Server Admin API operations
-    #[command(alias = "ss")]
+    #[command(name = "security-server", alias = "admin", alias = "ss")]
     SecurityServer {
         #[command(subcommand)]
         action: SecurityServerAction,
     },
     /// Central Server management operations
-    #[command(alias = "cs")]
+    #[command(name = "central-server", alias = "central", alias = "cs")]
     CentralServer {
         #[command(subcommand)]
         action: CentralServerAction,
