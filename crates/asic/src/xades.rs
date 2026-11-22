@@ -13,7 +13,7 @@ pub const SIGNED_PROPERTIES_TYPE: &str = "http://uri.etsi.org/01903#SignedProper
 
 /// Root XAdES-BES digital signature element conforming to ETSI TS 101 903 / X-Road specification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename = "Signature")]
+#[serde(rename = "ds:Signature")]
 pub struct XadesSignatureXml {
     #[serde(rename = "@xmlns:ds", default, skip_serializing_if = "Option::is_none")]
     pub xmlns_ds: Option<String>,
@@ -211,12 +211,7 @@ pub fn create_xades_bes_signature(
         },
     };
 
-    let mut xml_body = quick_xml::se::to_string(&sig_xml).unwrap_or_default();
-    if xml_body.starts_with("<Signature") {
-        xml_body = xml_body
-            .replacen("<Signature", "<ds:Signature", 1)
-            .replacen("</Signature>", "</ds:Signature>", 1);
-    }
+    let xml_body = quick_xml::se::to_string(&sig_xml).unwrap_or_default();
     format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}", xml_body)
 }
 

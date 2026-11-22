@@ -1,5 +1,5 @@
 use crate::BatchHasher;
-use crate::db::MessageLogDb;
+use crate::services::MessageLogDb;
 use common::{XRoadError, XRoadResult};
 use sha2::{Digest, Sha256, Sha512};
 use std::time::Duration;

@@ -164,22 +164,26 @@ pub async fn handle_server_request(
         };
 
         if is_xml {
-            let tag = if service_code.eq_ignore_ascii_case("listMethods") {
-                "listMethodsResponse"
+            let service_codes: Vec<String> = services
+                .iter()
+                .map(|s| {
+                    if let Some(ref v) = s.service_version {
+                        format!("{}.{}", s.service_code, v)
+                    } else {
+                        s.service_code.clone()
+                    }
+                })
+                .collect();
+
+            let methods_xml = if service_code.eq_ignore_ascii_case("listMethods") {
+                message::ListMethodsResponseXml::new(service_codes)
+                    .to_xml()
+                    .unwrap_or_default()
             } else {
-                "allowedMethodsResponse"
+                message::AllowedMethodsResponseXml::new(service_codes)
+                    .to_xml()
+                    .unwrap_or_default()
             };
-            let mut methods_xml =
-                format!(r#"<{tag} xmlns:xroad="http://x-road.eu/xsd/xroad.xsd">"#);
-            for s in &services {
-                let code = if let Some(ref v) = s.service_version {
-                    format!("{}.{}", s.service_code, v)
-                } else {
-                    s.service_code.clone()
-                };
-                methods_xml.push_str(&format!(r#"<xroad:service>{code}</xroad:service>"#));
-            }
-            methods_xml.push_str(&format!(r#"</{tag}>"#));
 
             let resp_envelope = SoapEnvelopeXml::new_response(
                 parsed_headers.client.clone(),

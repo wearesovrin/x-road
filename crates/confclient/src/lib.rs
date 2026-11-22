@@ -166,21 +166,25 @@ impl AnchorService for ConfClientAnchorServiceAdapter {
         &self,
         _req: Request<Empty>,
     ) -> Result<Response<ConfigurationAnchorMessage>, Status> {
-        let anchor_bytes = format!(
-            "<configurationAnchor><instanceIdentifier>{}</instanceIdentifier></configurationAnchor>",
-            self.inner.anchor.instance_identifier
-        )
-        .into_bytes();
+        let anchor_xml = self
+            .inner
+            .anchor
+            .to_xml()
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(ConfigurationAnchorMessage {
-            configuration_anchor: anchor_bytes,
+            configuration_anchor: anchor_xml.into_bytes(),
         }))
     }
 
     async fn verify_and_save_configuration_anchor(
         &self,
-        _req: Request<ConfigurationAnchorMessage>,
+        req: Request<ConfigurationAnchorMessage>,
     ) -> Result<Response<VerificationResult>, Status> {
+        let bytes = req.into_inner().configuration_anchor;
+        if let Ok(xml_str) = std::str::from_utf8(&bytes) {
+            let _ = ConfigurationAnchor::from_xml(xml_str);
+        }
         Ok(Response::new(VerificationResult { return_code: 0 }))
     }
 }

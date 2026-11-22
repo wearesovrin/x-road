@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 pub mod soap;
-pub use soap::{SoapBodyXml, SoapEnvelopeXml, SoapFaultDetailXml, SoapFaultXml, SoapHeaderXml};
+pub use soap::{
+    AllowedMethodsResponseXml, ListMethodsResponseXml, SoapBodyXml, SoapEnvelopeXml,
+    SoapFaultDetailXml, SoapFaultXml, SoapHeaderXml,
+};
 
 /// Standard headers included in every X-Road message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

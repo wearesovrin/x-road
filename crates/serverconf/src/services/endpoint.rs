@@ -1,0 +1,166 @@
+use crate::entities::{access_right, endpoint};
+use crate::services::client::ClientService;
+use common::{XRoadError, XRoadResult};
+use identifiers::ClientId;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use std::sync::Arc;
+
+/// Service for managing endpoints and endpoint access rights in Security Server configuration.
+#[derive(Clone)]
+pub struct EndpointService {
+    db: Arc<DatabaseConnection>,
+    clients: ClientService,
+}
+
+impl EndpointService {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+        Self {
+            db: db.clone(),
+            clients: ClientService::new(db),
+        }
+    }
+
+    fn raw_connection(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    /// Registers a custom endpoint on a service.
+    pub async fn add_endpoint(
+        &self,
+        client_id: &ClientId,
+        service_code: &str,
+        method: &str,
+        path: &str,
+    ) -> XRoadResult<endpoint::Model> {
+        let client_model =
+            self.clients.get_client(client_id).await?.ok_or_else(|| {
+                XRoadError::Configuration(format!("Client not found: {client_id}"))
+            })?;
+
+        endpoint::ActiveModel {
+            client_id: Set(client_model.id),
+            service_code: Set(service_code.to_string()),
+            method: Set(method.to_uppercase()),
+            path: Set(path.to_string()),
+            generated: Set(false),
+            ..Default::default()
+        }
+        .insert(self.raw_connection())
+        .await
+        .map_err(|e| XRoadError::Database(format!("Failed to add endpoint: {e}")))
+    }
+
+    /// Lists all endpoints for a client.
+    pub async fn list_endpoints(&self, client_id: &ClientId) -> XRoadResult<Vec<endpoint::Model>> {
+        let client_model =
+            self.clients.get_client(client_id).await?.ok_or_else(|| {
+                XRoadError::Configuration(format!("Client not found: {client_id}"))
+            })?;
+
+        endpoint::Entity::find()
+            .filter(endpoint::Column::ClientId.eq(client_model.id))
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query endpoints: {e}")))
+    }
+
+    /// Gets an endpoint by ID.
+    pub async fn get_endpoint(&self, id: i64) -> XRoadResult<Option<endpoint::Model>> {
+        endpoint::Entity::find_by_id(id)
+            .one(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query endpoint: {e}")))
+    }
+
+    /// Deletes an endpoint by ID.
+    pub async fn delete_endpoint(&self, id: i64) -> XRoadResult<()> {
+        let ep = self.get_endpoint(id).await?;
+        if let Some(endpoint) = ep {
+            let ep_ref = format!(
+                "EP:{}:{}:{}",
+                endpoint.service_code, endpoint.method, endpoint.path
+            );
+            let _ = access_right::Entity::delete_many()
+                .filter(access_right::Column::ServiceIdStr.eq(ep_ref))
+                .exec(self.raw_connection())
+                .await;
+
+            endpoint::Entity::delete_by_id(id)
+                .exec(self.raw_connection())
+                .await
+                .map_err(|e| XRoadError::Database(format!("Failed to delete endpoint: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Grants access for a client to an endpoint.
+    pub async fn grant_endpoint_access(
+        &self,
+        endpoint_id: i64,
+        subject_id: &str,
+    ) -> XRoadResult<()> {
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
+
+        let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
+        let existing = access_right::Entity::find()
+            .filter(access_right::Column::ServiceIdStr.eq(&ep_ref))
+            .filter(access_right::Column::SubjectClientIdStr.eq(subject_id))
+            .one(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query endpoint access: {e}")))?;
+
+        if existing.is_none() {
+            access_right::ActiveModel {
+                service_id_str: Set(ep_ref),
+                subject_client_id_str: Set(subject_id.to_string()),
+                rights_given: Set(chrono::Utc::now()),
+                ..Default::default()
+            }
+            .insert(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to grant endpoint access: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Revokes access for a client to an endpoint.
+    pub async fn revoke_endpoint_access(
+        &self,
+        endpoint_id: i64,
+        subject_id: &str,
+    ) -> XRoadResult<()> {
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
+
+        let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
+        access_right::Entity::delete_many()
+            .filter(access_right::Column::ServiceIdStr.eq(ep_ref))
+            .filter(access_right::Column::SubjectClientIdStr.eq(subject_id))
+            .exec(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to revoke endpoint access: {e}")))?;
+        Ok(())
+    }
+
+    /// Lists clients with access rights to an endpoint.
+    pub async fn list_endpoint_access_rights(&self, endpoint_id: i64) -> XRoadResult<Vec<String>> {
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
+
+        let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
+        let rights = access_right::Entity::find()
+            .filter(access_right::Column::ServiceIdStr.eq(ep_ref))
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query endpoint access: {e}")))?;
+
+        Ok(rights
+            .into_iter()
+            .map(|r| r.subject_client_id_str)
+            .collect())
+    }
+}

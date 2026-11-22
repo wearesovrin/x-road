@@ -1,15 +1,17 @@
 pub mod archiver;
-pub mod db;
 pub mod entities;
 pub mod migration;
+pub mod services;
 pub mod timestamp;
 
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha512};
 
 pub use archiver::{ArchiveInfo, ArchiveVerificationResult, MessageLogArchiver, verify_archive};
-pub use db::{MessageLogDb, NewLogRecord};
 pub use migration::Migrator;
+pub use services::{
+    AttachmentService, HashChainService, LogService, MessageLog, MessageLogDb, NewLogRecord,
+};
 pub use timestamp::{TimestampBatchResult, TimestampingPolicy, TimestampingService};
 
 /// Logged message record stored for non-repudiation and auditing.

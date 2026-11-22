@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-use crate::db::MessageLogDb;
+use crate::services::MessageLogDb;
 
 /// Helper function to encode raw bytes into lowercase hexadecimal string.
 fn hex_encode(bytes: &[u8]) -> String {
@@ -348,7 +348,7 @@ pub fn verify_archive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::NewLogRecord;
+    use crate::services::NewLogRecord;
 
     #[tokio::test]
     async fn test_archiver_batch_and_verification() {

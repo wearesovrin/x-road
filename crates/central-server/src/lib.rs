@@ -1,6 +1,6 @@
-pub mod db;
 pub mod entities;
 pub mod migration;
+pub mod services;
 
 use poem::{
     EndpointExt, IntoResponse, Response, Route, Server, get, handler, http::StatusCode,
@@ -13,8 +13,8 @@ use poem_openapi::{
 };
 use sha2::{Digest, Sha256};
 
-pub use db::{CentralServerDb, ClientItem};
 pub use migration::Migrator;
+pub use services::{CentralServerDb, CentralServerServices, ClientItem};
 
 #[derive(Clone)]
 pub struct CentralServerState {

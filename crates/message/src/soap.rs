@@ -112,7 +112,7 @@ pub struct SoapBodyXml {
 
 /// Complete X-Road SOAP 1.1 Envelope (`<SOAP-ENV:Envelope>`) serialized & deserialized via quick-xml serde.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename = "Envelope")]
+#[serde(rename = "SOAP-ENV:Envelope")]
 pub struct SoapEnvelopeXml {
     #[serde(
         rename = "@xmlns:SOAP-ENV",
@@ -214,11 +214,6 @@ impl SoapEnvelopeXml {
         let mut body = quick_xml::se::to_string(self).map_err(|e| {
             XRoadError::MessageProtocol(format!("Failed to serialize SOAP envelope XML: {e}"))
         })?;
-        if body.starts_with("<Envelope") {
-            body = body
-                .replacen("<Envelope", "<SOAP-ENV:Envelope", 1)
-                .replacen("</Envelope>", "</SOAP-ENV:Envelope>", 1);
-        }
         if let Some(p) = &self.payload {
             if body.contains("<SOAP-ENV:Body/>") {
                 body = body.replacen(
@@ -255,6 +250,58 @@ impl SoapEnvelopeXml {
     /// Extracts XRoadHeaders from this envelope.
     pub fn to_xroad_headers(&self) -> XRoadResult<XRoadHeaders> {
         self.header.to_xroad_headers()
+    }
+}
+
+/// XML representation of X-Road `listMethodsResponse`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "listMethodsResponse")]
+pub struct ListMethodsResponseXml {
+    #[serde(rename = "@xmlns:xroad")]
+    pub xmlns_xroad: String,
+    #[serde(rename = "xroad:service", default)]
+    pub services: Vec<String>,
+}
+
+impl ListMethodsResponseXml {
+    pub fn new(services: Vec<String>) -> Self {
+        Self {
+            xmlns_xroad: XROAD_NS.to_string(),
+            services,
+        }
+    }
+
+    pub fn to_xml(&self) -> XRoadResult<String> {
+        quick_xml::se::to_string(self).map_err(|e| {
+            XRoadError::MessageProtocol(format!("Failed to serialize listMethodsResponse XML: {e}"))
+        })
+    }
+}
+
+/// XML representation of X-Road `allowedMethodsResponse`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "allowedMethodsResponse")]
+pub struct AllowedMethodsResponseXml {
+    #[serde(rename = "@xmlns:xroad")]
+    pub xmlns_xroad: String,
+    #[serde(rename = "xroad:service", default)]
+    pub services: Vec<String>,
+}
+
+impl AllowedMethodsResponseXml {
+    pub fn new(services: Vec<String>) -> Self {
+        Self {
+            xmlns_xroad: XROAD_NS.to_string(),
+            services,
+        }
+    }
+
+    pub fn to_xml(&self) -> XRoadResult<String> {
+        quick_xml::se::to_string(self).map_err(|e| {
+            XRoadError::MessageProtocol(format!(
+                "Failed to serialize allowedMethodsResponse XML: {e}"
+            ))
+        })
     }
 }
 
@@ -355,5 +402,24 @@ mod tests {
         assert_eq!(headers.service.service_code, "testQuery");
         assert_eq!(headers.id, "1234567890");
         assert_eq!(headers.user_id, Some("EE37702211234".to_string()));
+    }
+
+    #[test]
+    fn test_methods_response_xml_serde() {
+        let list_resp =
+            ListMethodsResponseXml::new(vec!["test.v1".to_string(), "echo".to_string()]);
+        let xml = list_resp
+            .to_xml()
+            .expect("Should serialize listMethodsResponse");
+        assert!(xml.contains("<listMethodsResponse"));
+        assert!(xml.contains("<xroad:service>test.v1</xroad:service>"));
+        assert!(xml.contains("<xroad:service>echo</xroad:service>"));
+
+        let allowed_resp = AllowedMethodsResponseXml::new(vec!["query".to_string()]);
+        let xml2 = allowed_resp
+            .to_xml()
+            .expect("Should serialize allowedMethodsResponse");
+        assert!(xml2.contains("<allowedMethodsResponse"));
+        assert!(xml2.contains("<xroad:service>query</xroad:service>"));
     }
 }

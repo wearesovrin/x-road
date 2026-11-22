@@ -27,20 +27,41 @@ async fn mock_user_backend(body: PoemJson<Value>) -> (StatusCode, PoemJson<Value
     (StatusCode::OK, PoemJson(resp))
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename = "SOAP-ENV:Envelope")]
+struct MockSoapEnvelope {
+    #[serde(rename = "@xmlns:SOAP-ENV")]
+    xmlns: String,
+    #[serde(rename = "SOAP-ENV:Body")]
+    body: MockSoapBody,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct MockSoapBody {
+    #[serde(rename = "getUserResponse")]
+    response: MockGetUserResponse,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct MockGetUserResponse {
+    result: String,
+    #[serde(rename = "echoQuery")]
+    echo_query: usize,
+}
+
 #[handler]
 async fn mock_soap_backend(body: String) -> Response {
-    let resp = format!(
-        r#"<?xml version="1.0" encoding="utf-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP-ENV:Body>
-    <getUserResponse>
-      <result>SUCCESS</result>
-      <echoQuery>{}</echoQuery>
-    </getUserResponse>
-  </SOAP-ENV:Body>
-</SOAP-ENV:Envelope>"#,
-        body.len()
-    );
+    let envelope = MockSoapEnvelope {
+        xmlns: "http://schemas.xmlsoap.org/soap/envelope/".to_string(),
+        body: MockSoapBody {
+            response: MockGetUserResponse {
+                result: "SUCCESS".to_string(),
+                echo_query: body.len(),
+            },
+        },
+    };
+    let xml = quick_xml::se::to_string(&envelope).unwrap_or_default();
+    let resp = format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n{xml}");
     Response::builder()
         .status(StatusCode::OK)
         .content_type("text/xml; charset=utf-8")

@@ -16,6 +16,94 @@ pub struct ConfigurationAnchor {
     pub verification_cert_hashes: Vec<String>,
 }
 
+/// XML representation of a configuration anchor element for quick-xml serialization and deserialization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename = "configurationAnchor")]
+pub struct ConfigurationAnchorXml {
+    #[serde(rename = "instanceIdentifier")]
+    pub instance_identifier: String,
+    #[serde(rename = "generatedAt")]
+    pub generated_at: String,
+    #[serde(rename = "source", default)]
+    pub sources: Vec<AnchorSourceXml>,
+}
+
+/// XML representation of an anchor source entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchorSourceXml {
+    #[serde(rename = "downloadURL")]
+    pub download_url: String,
+    #[serde(
+        rename = "verificationCert",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub verification_cert: Option<String>,
+}
+
+impl ConfigurationAnchor {
+    /// Serializes configuration anchor into XML using `quick-xml` serde.
+    pub fn to_xml(&self) -> XRoadResult<String> {
+        let dto = ConfigurationAnchorXml {
+            instance_identifier: self.instance_identifier.clone(),
+            generated_at: self.generated_at.to_rfc3339(),
+            sources: self
+                .download_urls
+                .iter()
+                .enumerate()
+                .map(|(i, url)| AnchorSourceXml {
+                    download_url: url.clone(),
+                    verification_cert: self
+                        .verification_cert_hashes
+                        .get(i)
+                        .cloned()
+                        .or_else(|| self.verification_cert_hashes.first().cloned()),
+                })
+                .collect(),
+        };
+
+        let body = quick_xml::se::to_string(&dto).map_err(|e| {
+            common::XRoadError::Configuration(format!(
+                "Failed to serialize configuration anchor XML with quick-xml: {e}"
+            ))
+        })?;
+
+        Ok(format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{body}"
+        ))
+    }
+
+    /// Parses configuration anchor from XML using `quick-xml` serde.
+    pub fn from_xml(xml: &str) -> XRoadResult<Self> {
+        let dto: ConfigurationAnchorXml = quick_xml::de::from_str(xml).map_err(|e| {
+            common::XRoadError::Configuration(format!(
+                "Failed to parse configuration anchor XML with quick-xml: {e}"
+            ))
+        })?;
+
+        let generated_at = chrono::DateTime::parse_from_rfc3339(&dto.generated_at)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        let mut download_urls = Vec::new();
+        let mut verification_cert_hashes = Vec::new();
+
+        for s in dto.sources {
+            download_urls.push(s.download_url);
+            if let Some(cert) = s.verification_cert {
+                verification_cert_hashes.push(cert);
+            }
+        }
+
+        Ok(Self {
+            instance_identifier: dto.instance_identifier,
+            generated_at,
+            download_urls,
+            verification_cert_hashes,
+        })
+    }
+}
+
 /// Approved Certification Authority in global configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApprovedCa {
@@ -415,5 +503,33 @@ mod tests {
         assert_eq!(parsed.members[0].subsystems.len(), 1);
         assert_eq!(parsed.security_servers.len(), 1);
         assert_eq!(parsed.security_servers[0].server_code, "SS5");
+    }
+
+    #[test]
+    fn test_configuration_anchor_xml_roundtrip() {
+        let anchor = ConfigurationAnchor {
+            instance_identifier: "EE-TEST".to_string(),
+            generated_at: Utc::now(),
+            download_urls: vec![
+                "http://cs.example.com/internalconf".to_string(),
+                "http://cs-backup.example.com/internalconf".to_string(),
+            ],
+            verification_cert_hashes: vec!["cert-hash-1".to_string(), "cert-hash-2".to_string()],
+        };
+
+        let xml = anchor.to_xml().expect("Failed to serialize anchor to XML");
+        assert!(xml.contains("<configurationAnchor>"));
+        assert!(xml.contains("<instanceIdentifier>EE-TEST</instanceIdentifier>"));
+        assert!(xml.contains("<downloadURL>http://cs.example.com/internalconf</downloadURL>"));
+
+        let parsed = ConfigurationAnchor::from_xml(&xml).expect("Failed to parse anchor from XML");
+        assert_eq!(parsed.instance_identifier, "EE-TEST");
+        assert_eq!(parsed.download_urls.len(), 2);
+        assert_eq!(
+            parsed.download_urls[0],
+            "http://cs.example.com/internalconf"
+        );
+        assert_eq!(parsed.verification_cert_hashes.len(), 2);
+        assert_eq!(parsed.verification_cert_hashes[0], "cert-hash-1");
     }
 }

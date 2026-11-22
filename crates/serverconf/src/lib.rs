@@ -1,6 +1,6 @@
-pub mod db;
 pub mod entities;
 pub mod migration;
+pub mod services;
 
 use common::XRoadResult;
 use identifiers::{ClientId, ServiceId};
@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
-pub use db::DatabaseServerConf;
 pub use migration::Migrator;
+pub use services::{
+    AccessRightService, ApiKeyService, CertificateService, ClientService, DatabaseServerConf,
+    EndpointService, LocalGroupService, ServerConf, ServiceService,
+};
 
 /// Service description representing either REST or SOAP services.
 #[derive(Debug, Clone, Serialize, Deserialize)]

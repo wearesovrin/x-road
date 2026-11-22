@@ -3437,6 +3437,7 @@ dependencies = [
  "poem-openapi",
  "proto",
  "proxy",
+ "quick-xml 0.37.5",
  "reqwest",
  "sea-orm",
  "serde",
