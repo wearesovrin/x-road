@@ -600,6 +600,7 @@ dependencies = [
 name = "central-server"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "common",
  "globalconf",
@@ -611,6 +612,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror",
  "tokio",
  "tracing",
@@ -743,9 +745,11 @@ dependencies = [
  "globalconf",
  "identifiers",
  "poem",
+ "proto",
  "reqwest",
  "thiserror",
  "tokio",
+ "tonic",
  "tracing",
 ]
 
@@ -2148,6 +2152,7 @@ dependencies = [
 name = "monitor"
 version = "0.1.0"
 dependencies = [
+ "prost-types",
  "proto",
  "tokio",
  "tonic",
@@ -2717,6 +2722,7 @@ dependencies = [
  "serde_json",
  "serverconf",
  "sha2 0.10.9",
+ "signer",
  "thiserror",
  "tokio",
  "tracing",
@@ -3603,6 +3609,7 @@ name = "signer"
 version = "0.1.0"
 dependencies = [
  "common",
+ "identifiers",
  "proto",
  "rcgen",
  "ring",

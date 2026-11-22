@@ -2,12 +2,12 @@ pub mod admin_api;
 pub mod config;
 pub mod node;
 
-pub use admin_api::{admin_api_app, AdminApi, AdminApiState, ServerStatus};
+pub use admin_api::{AdminApi, AdminApiState, ServerStatus, admin_api_app};
 pub use config::SecurityServerConfig;
 pub use node::SecurityServerNode;
 
-use poem::listener::TcpListener;
 use poem::Server;
+use poem::listener::TcpListener;
 use serverconf::DatabaseServerConf;
 
 /// Backward-compatible helper to run just the Admin REST API.

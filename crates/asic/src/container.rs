@@ -113,16 +113,26 @@ impl AsicContainer {
             return Err(XRoadError::Asic("ASiC-E archive is empty".to_string()));
         }
         {
-            let mut mime_file = archive.by_index(0).map_err(|e| XRoadError::Asic(e.to_string()))?;
-            let name = mime_file.name().map_err(|e| XRoadError::Asic(e.to_string()))?;
+            let mut mime_file = archive
+                .by_index(0)
+                .map_err(|e| XRoadError::Asic(e.to_string()))?;
+            let name = mime_file
+                .name()
+                .map_err(|e| XRoadError::Asic(e.to_string()))?;
             if name != "mimetype" {
-                return Err(XRoadError::Asic(format!("First file must be 'mimetype', found '{name}'")));
+                return Err(XRoadError::Asic(format!(
+                    "First file must be 'mimetype', found '{name}'"
+                )));
             }
             let mut mime_content = Vec::new();
-            mime_file.read_to_end(&mut mime_content).map_err(|e| XRoadError::Asic(e.to_string()))?;
+            mime_file
+                .read_to_end(&mut mime_content)
+                .map_err(|e| XRoadError::Asic(e.to_string()))?;
             let mime_str = String::from_utf8_lossy(&mime_content);
             if mime_str.trim() != ASIC_MIME_TYPE {
-                return Err(XRoadError::Asic(format!("Invalid mimetype content: {mime_str}")));
+                return Err(XRoadError::Asic(format!(
+                    "Invalid mimetype content: {mime_str}"
+                )));
             }
         }
 
@@ -132,11 +142,17 @@ impl AsicContainer {
         let mut manifest = None;
 
         for i in 1..archive.len() {
-            let mut file = archive.by_index(i).map_err(|e| XRoadError::Asic(e.to_string()))?;
-            let name = file.name().map_err(|e| XRoadError::Asic(e.to_string()))?.to_string();
+            let mut file = archive
+                .by_index(i)
+                .map_err(|e| XRoadError::Asic(e.to_string()))?;
+            let name = file
+                .name()
+                .map_err(|e| XRoadError::Asic(e.to_string()))?
+                .to_string();
 
             let mut content = Vec::new();
-            file.read_to_end(&mut content).map_err(|e| XRoadError::Asic(e.to_string()))?;
+            file.read_to_end(&mut content)
+                .map_err(|e| XRoadError::Asic(e.to_string()))?;
 
             if name == "META-INF/manifest.xml" {
                 let xml_str = String::from_utf8_lossy(&content);
@@ -175,7 +191,11 @@ impl AsicContainer {
     pub fn verify_integrity(&self) -> XRoadResult<bool> {
         let manifest = match &self.manifest {
             Some(m) => m,
-            None => return Err(XRoadError::Asic("Missing META-INF/manifest.xml".to_string())),
+            None => {
+                return Err(XRoadError::Asic(
+                    "Missing META-INF/manifest.xml".to_string(),
+                ));
+            }
         };
 
         for file in &self.files {

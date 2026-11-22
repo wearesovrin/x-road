@@ -3,16 +3,16 @@ pub mod entities;
 pub mod migration;
 
 use poem::{
-    EndpointExt, Response, Route, Server, get, handler, http::StatusCode, listener::TcpListener,
-    web::Data,
+    EndpointExt, IntoResponse, Response, Route, Server, get, handler, http::StatusCode,
+    listener::TcpListener, web::Data,
 };
 use poem_openapi::{
     Object, OpenApi, OpenApiService,
     param::Path,
-    payload::Json,
+    payload::{Attachment, Json, PlainText},
 };
 
-pub use db::CentralServerDb;
+pub use db::{CentralServerDb, ClientItem};
 pub use migration::Migrator;
 
 #[derive(Clone)]
@@ -21,19 +21,53 @@ pub struct CentralServerState {
     pub db: CentralServerDb,
 }
 
+/// Helper wrapper for raw pre-rendered XML HTTP responses in Poem.
+pub struct RawXml(pub String);
+
+impl IntoResponse for RawXml {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .content_type("application/xml; charset=utf-8")
+            .body(self.0)
+    }
+}
+
 #[handler]
-async fn handle_shared_params_xml(
-    Data(state): Data<&CentralServerState>,
-) -> poem::Result<Response> {
+async fn handle_shared_params_xml(Data(state): Data<&CentralServerState>) -> poem::Result<RawXml> {
     let xml = state
         .db
         .generate_shared_params_xml(&state.instance_id)
         .await
         .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR))?;
 
-    Ok(Response::builder()
-        .content_type("application/xml")
-        .body(xml))
+    Ok(RawXml(xml))
+}
+
+// ==========================================
+// DTOs
+// ==========================================
+
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct InitializationStatusDto {
+    pub is_initialized: bool,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct InitialRegistrationDto {
+    pub central_server_address: String,
+    pub software_token_pin: String,
+}
+
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct MemberClassDto {
+    pub code: String,
+    pub description: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddMemberClassRequest {
+    pub code: String,
+    pub description: String,
 }
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
@@ -62,6 +96,11 @@ pub struct AddMemberRequest {
     pub administrative_contact: Option<String>,
 }
 
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateMemberRequest {
+    pub name: String,
+}
+
 #[derive(Object, serde::Serialize, Debug, Clone)]
 pub struct SubsystemDto {
     pub id: i64,
@@ -72,6 +111,16 @@ pub struct SubsystemDto {
 #[derive(Object, serde::Deserialize, Debug, Clone)]
 pub struct AddSubsystemRequest {
     pub subsystem_code: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ClientDto {
+    pub client_id: String,
+    pub member_name: String,
+    pub member_class: String,
+    pub member_code: String,
+    pub subsystem_code: Option<String>,
+    pub status: String,
 }
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
@@ -93,6 +142,24 @@ pub struct RegisterSecurityServerRequest {
 pub struct LinkClientRequest {
     pub security_server_id: i64,
     pub client_id_str: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddServerClientRequest {
+    pub client_id_str: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct SecurityServerAuthCertDto {
+    pub id: i64,
+    pub security_server_id: i64,
+    pub cert_hash: String,
+    pub created_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddAuthCertRequest {
+    pub cert_pem: String,
 }
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
@@ -140,9 +207,57 @@ pub struct CreateGlobalGroupRequest {
 
 #[derive(Object, serde::Deserialize, Debug, Clone)]
 pub struct AddGroupMemberRequest {
-    pub group_code: String,
     pub client_id_str: String,
 }
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ConfigurationAnchorDto {
+    pub instance_identifier: String,
+    pub generated_at: String,
+}
+
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ServerAddressDto {
+    pub server_address: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct SystemVersionDto {
+    pub version: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ManagementRequestDto {
+    pub id: i64,
+    pub request_type: String,
+    pub origin: String,
+    pub security_server_id: Option<i64>,
+    pub client_id_str: Option<String>,
+    pub status: String,
+    pub comments: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct CreateManagementRequestDto {
+    pub request_type: String,
+    pub origin: String,
+    pub security_server_id: Option<i64>,
+    pub client_id_str: Option<String>,
+    pub auth_cert_pem: Option<String>,
+    pub comments: Option<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct BackupDto {
+    pub filename: String,
+    pub created_at: String,
+    pub size_bytes: u64,
+}
+
+// ==========================================
+// Central Server REST API Implementation
+// ==========================================
 
 pub struct CentralServerApi {
     pub instance_id: String,
@@ -151,21 +266,108 @@ pub struct CentralServerApi {
 
 #[OpenApi]
 impl CentralServerApi {
-    /// Returns the Central Server operational status and counts.
-    #[oai(path = "/v1/status", method = "get")]
-    async fn status(&self) -> Json<CentralServerInfo> {
-        let members = self.db.list_members().await.unwrap_or_default();
-        let servers = self.db.list_security_servers().await.unwrap_or_default();
+    // ------------------------------------------
+    // Initialization
+    // ------------------------------------------
 
-        Json(CentralServerInfo {
-            instance_identifier: self.instance_id.clone(),
-            status: "READY".to_string(),
-            member_count: members.len(),
-            security_server_count: servers.len(),
+    #[oai(path = "/v1/initialization/status", method = "get")]
+    async fn get_initialization_status(&self) -> Json<InitializationStatusDto> {
+        let is_init = self
+            .db
+            .get_system_parameter("is_initialized")
+            .await
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        Json(InitializationStatusDto {
+            is_initialized: is_init,
         })
     }
 
-    /// Lists all registered X-Road members.
+    #[oai(path = "/v1/initialization", method = "post")]
+    async fn initialize(
+        &self,
+        body: Json<InitialRegistrationDto>,
+    ) -> poem::Result<Json<InitializationStatusDto>> {
+        self.db
+            .set_server_address(&body.0.central_server_address)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+        self.db
+            .set_system_parameter("is_initialized", "true")
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(InitializationStatusDto {
+            is_initialized: true,
+        }))
+    }
+
+    // ------------------------------------------
+    // Member Classes
+    // ------------------------------------------
+
+    #[oai(path = "/v1/member-classes", method = "get")]
+    async fn list_member_classes(&self) -> Json<Vec<MemberClassDto>> {
+        let classes = self.db.list_member_classes().await.unwrap_or_default();
+        Json(
+            classes
+                .into_iter()
+                .map(|c| MemberClassDto {
+                    code: c.code,
+                    description: c.description,
+                })
+                .collect(),
+        )
+    }
+
+    #[oai(path = "/v1/member-classes", method = "post")]
+    async fn add_member_class(
+        &self,
+        body: Json<AddMemberClassRequest>,
+    ) -> poem::Result<Json<MemberClassDto>> {
+        let mc = self
+            .db
+            .add_member_class(&body.0.code, &body.0.description)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+        Ok(Json(MemberClassDto {
+            code: mc.code,
+            description: mc.description,
+        }))
+    }
+
+    #[oai(path = "/v1/member-classes/:code", method = "get")]
+    async fn get_member_class(&self, code: Path<String>) -> poem::Result<Json<MemberClassDto>> {
+        let mc = self
+            .db
+            .get_member_class(&code.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Member class not found", StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(MemberClassDto {
+            code: mc.code,
+            description: mc.description,
+        }))
+    }
+
+    #[oai(path = "/v1/member-classes/:code", method = "delete")]
+    async fn delete_member_class(&self, code: Path<String>) -> poem::Result<Json<bool>> {
+        let ok = self.db.delete_member_class(&code.0).await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(ok))
+    }
+
+    // ------------------------------------------
+    // Members
+    // ------------------------------------------
+
     #[oai(path = "/v1/members", method = "get")]
     async fn list_members(&self) -> Json<Vec<MemberDto>> {
         let members = self.db.list_members().await.unwrap_or_default();
@@ -183,7 +385,6 @@ impl CentralServerApi {
         Json(dtos)
     }
 
-    /// Registers a new X-Road member.
     #[oai(path = "/v1/members", method = "post")]
     async fn add_member(&self, body: Json<AddMemberRequest>) -> poem::Result<Json<MemberDto>> {
         let req = body.0;
@@ -209,14 +410,60 @@ impl CentralServerApi {
         }))
     }
 
-    /// Lists all subsystems belonging to a member.
+    #[oai(path = "/v1/members/:member_id", method = "get")]
+    async fn get_member(&self, member_id: Path<i64>) -> poem::Result<Json<MemberDto>> {
+        let m = self
+            .db
+            .get_member_by_id(member_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| poem::Error::from_string("Member not found", StatusCode::NOT_FOUND))?;
+        Ok(Json(MemberDto {
+            id: m.id,
+            instance: m.xroad_instance,
+            member_class: m.member_class,
+            member_code: m.member_code,
+            name: m.name,
+            administrative_contact: m.administrative_contact,
+        }))
+    }
+
+    #[oai(path = "/v1/members/:member_id", method = "put")]
+    async fn update_member(
+        &self,
+        member_id: Path<i64>,
+        body: Json<UpdateMemberRequest>,
+    ) -> poem::Result<Json<MemberDto>> {
+        let m = self
+            .db
+            .update_member_name(member_id.0, &body.0.name)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+        Ok(Json(MemberDto {
+            id: m.id,
+            instance: m.xroad_instance,
+            member_class: m.member_class,
+            member_code: m.member_code,
+            name: m.name,
+            administrative_contact: m.administrative_contact,
+        }))
+    }
+
+    #[oai(path = "/v1/members/:member_id", method = "delete")]
+    async fn delete_member(&self, member_id: Path<i64>) -> poem::Result<Json<bool>> {
+        let ok = self.db.delete_member(member_id.0).await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(ok))
+    }
+
     #[oai(path = "/v1/members/:member_id/subsystems", method = "get")]
     async fn list_subsystems(&self, member_id: Path<i64>) -> poem::Result<Json<Vec<SubsystemDto>>> {
-        let subs = self
-            .db
-            .list_subsystems(member_id.0)
-            .await
-            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR))?;
+        let subs = self.db.list_subsystems(member_id.0).await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
 
         let dtos = subs
             .into_iter()
@@ -229,7 +476,6 @@ impl CentralServerApi {
         Ok(Json(dtos))
     }
 
-    /// Adds a subsystem to a member.
     #[oai(path = "/v1/members/:member_id/subsystems", method = "post")]
     async fn add_subsystem(
         &self,
@@ -249,7 +495,123 @@ impl CentralServerApi {
         }))
     }
 
-    /// Lists all registered Security Servers.
+    #[oai(path = "/v1/members/:member_id/global-groups", method = "get")]
+    async fn list_member_global_groups(
+        &self,
+        member_id: Path<i64>,
+    ) -> poem::Result<Json<Vec<String>>> {
+        let groups = self
+            .db
+            .list_member_global_groups(member_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(groups))
+    }
+
+    #[oai(path = "/v1/members/:member_id/owned-servers", method = "get")]
+    async fn list_member_owned_servers(
+        &self,
+        member_id: Path<i64>,
+    ) -> poem::Result<Json<Vec<SecurityServerDto>>> {
+        let servers = self
+            .db
+            .list_member_owned_servers(member_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(
+            servers
+                .into_iter()
+                .map(|s| SecurityServerDto {
+                    id: s.id,
+                    owner_id: s.owner_id,
+                    server_code: s.server_code,
+                    address: s.address,
+                })
+                .collect(),
+        ))
+    }
+
+    // ------------------------------------------
+    // Subsystems
+    // ------------------------------------------
+
+    #[oai(path = "/v1/subsystems", method = "get")]
+    async fn list_all_subsystems(&self) -> Json<Vec<SubsystemDto>> {
+        let subs = self.db.list_all_subsystems().await.unwrap_or_default();
+        Json(
+            subs.into_iter()
+                .map(|s| SubsystemDto {
+                    id: s.id,
+                    member_id: s.member_id,
+                    subsystem_code: s.subsystem_code,
+                })
+                .collect(),
+        )
+    }
+
+    #[oai(path = "/v1/subsystems/:subsystem_id", method = "get")]
+    async fn get_subsystem(&self, subsystem_id: Path<i64>) -> poem::Result<Json<SubsystemDto>> {
+        let sub = self
+            .db
+            .get_subsystem(subsystem_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Subsystem not found", StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(SubsystemDto {
+            id: sub.id,
+            member_id: sub.member_id,
+            subsystem_code: sub.subsystem_code,
+        }))
+    }
+
+    #[oai(path = "/v1/subsystems/:subsystem_id", method = "delete")]
+    async fn delete_subsystem(&self, subsystem_id: Path<i64>) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .delete_subsystem(subsystem_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
+    // ------------------------------------------
+    // Clients
+    // ------------------------------------------
+
+    #[oai(path = "/v1/clients", method = "get")]
+    async fn list_all_clients(&self) -> poem::Result<Json<Vec<ClientDto>>> {
+        let clients = self.db.list_all_clients().await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(
+            clients
+                .into_iter()
+                .map(|c| ClientDto {
+                    client_id: c.client_id,
+                    member_name: c.member_name,
+                    member_class: c.member_class,
+                    member_code: c.member_code,
+                    subsystem_code: c.subsystem_code,
+                    status: c.status,
+                })
+                .collect(),
+        ))
+    }
+
+    // ------------------------------------------
+    // Security Servers
+    // ------------------------------------------
+
     #[oai(path = "/v1/security-servers", method = "get")]
     async fn list_security_servers(&self) -> Json<Vec<SecurityServerDto>> {
         let servers = self.db.list_security_servers().await.unwrap_or_default();
@@ -265,7 +627,6 @@ impl CentralServerApi {
         Json(dtos)
     }
 
-    /// Registers a new Security Server.
     #[oai(path = "/v1/security-servers", method = "post")]
     async fn register_security_server(
         &self,
@@ -286,14 +647,96 @@ impl CentralServerApi {
         }))
     }
 
-    /// Links an X-Road client to a Security Server.
+    #[oai(path = "/v1/security-servers/:server_id", method = "get")]
+    async fn get_security_server(
+        &self,
+        server_id: Path<i64>,
+    ) -> poem::Result<Json<SecurityServerDto>> {
+        let s = self
+            .db
+            .get_security_server(server_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Security Server not found", StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(SecurityServerDto {
+            id: s.id,
+            owner_id: s.owner_id,
+            server_code: s.server_code,
+            address: s.address,
+        }))
+    }
+
+    #[oai(path = "/v1/security-servers/:server_id", method = "delete")]
+    async fn delete_security_server(&self, server_id: Path<i64>) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .delete_security_server(server_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
+    #[oai(path = "/v1/security-servers/:server_id/clients", method = "get")]
+    async fn list_server_clients(&self, server_id: Path<i64>) -> poem::Result<Json<Vec<String>>> {
+        let clients = self
+            .db
+            .list_security_server_clients(server_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(clients))
+    }
+
+    #[oai(path = "/v1/security-servers/:server_id/clients", method = "post")]
+    async fn add_server_client(
+        &self,
+        server_id: Path<i64>,
+        body: Json<AddServerClientRequest>,
+    ) -> poem::Result<Json<bool>> {
+        let client_id: identifiers::ClientId = body.0.client_id_str.parse().map_err(|e| {
+            poem::Error::from_string(format!("Invalid ClientId: {e}"), StatusCode::BAD_REQUEST)
+        })?;
+
+        self.db
+            .add_security_server_client(server_id.0, &client_id)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(true))
+    }
+
+    #[oai(
+        path = "/v1/security-servers/:server_id/clients/:client_id",
+        method = "delete"
+    )]
+    async fn remove_server_client(
+        &self,
+        server_id: Path<i64>,
+        client_id: Path<String>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .remove_security_server_client(server_id.0, &client_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
     #[oai(path = "/v1/security-servers/client", method = "post")]
     async fn link_client(&self, body: Json<LinkClientRequest>) -> poem::Result<Json<bool>> {
         let req = body.0;
-        let client_id: identifiers::ClientId = req
-            .client_id_str
-            .parse()
-            .map_err(|e| poem::Error::from_string(format!("Invalid ClientId: {e}"), StatusCode::BAD_REQUEST))?;
+        let client_id: identifiers::ClientId = req.client_id_str.parse().map_err(|e| {
+            poem::Error::from_string(format!("Invalid ClientId: {e}"), StatusCode::BAD_REQUEST)
+        })?;
 
         self.db
             .add_security_server_client(req.security_server_id, &client_id)
@@ -303,7 +746,265 @@ impl CentralServerApi {
         Ok(Json(true))
     }
 
-    /// Lists Approved Certification Authorities (CAs).
+    #[oai(
+        path = "/v1/security-servers/:server_id/authentication-certificates",
+        method = "get"
+    )]
+    async fn list_server_auth_certs(
+        &self,
+        server_id: Path<i64>,
+    ) -> poem::Result<Json<Vec<SecurityServerAuthCertDto>>> {
+        let certs = self
+            .db
+            .list_security_server_auth_certs(server_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+
+        Ok(Json(
+            certs
+                .into_iter()
+                .map(|c| SecurityServerAuthCertDto {
+                    id: c.id,
+                    security_server_id: c.security_server_id,
+                    cert_hash: c.cert_hash,
+                    created_at: c.created_at.to_rfc3339(),
+                })
+                .collect(),
+        ))
+    }
+
+    #[oai(
+        path = "/v1/security-servers/:server_id/authentication-certificates",
+        method = "post"
+    )]
+    async fn add_server_auth_cert(
+        &self,
+        server_id: Path<i64>,
+        body: Json<AddAuthCertRequest>,
+    ) -> poem::Result<Json<SecurityServerAuthCertDto>> {
+        let cert = self
+            .db
+            .add_security_server_auth_cert(server_id.0, &body.0.cert_pem)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(SecurityServerAuthCertDto {
+            id: cert.id,
+            security_server_id: cert.security_server_id,
+            cert_hash: cert.cert_hash,
+            created_at: cert.created_at.to_rfc3339(),
+        }))
+    }
+
+    #[oai(
+        path = "/v1/security-servers/:server_id/authentication-certificates/:cert_id",
+        method = "delete"
+    )]
+    async fn delete_server_auth_cert(
+        &self,
+        _server_id: Path<i64>,
+        cert_id: Path<i64>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .delete_security_server_auth_cert(cert_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
+    // ------------------------------------------
+    // Global Groups
+    // ------------------------------------------
+
+    #[oai(path = "/v1/global-groups", method = "get")]
+    async fn list_global_groups(&self) -> Json<Vec<GlobalGroupDto>> {
+        let groups = self.db.list_global_groups().await.unwrap_or_default();
+        let mut dtos = Vec::new();
+        for g in groups {
+            let members = self
+                .db
+                .list_global_group_members(&g.group_code)
+                .await
+                .unwrap_or_default();
+            dtos.push(GlobalGroupDto {
+                group_code: g.group_code,
+                description: g.description,
+                member_count: members.len(),
+            });
+        }
+        Json(dtos)
+    }
+
+    #[oai(path = "/v1/global-groups", method = "post")]
+    async fn create_global_group(
+        &self,
+        body: Json<CreateGlobalGroupRequest>,
+    ) -> poem::Result<Json<GlobalGroupDto>> {
+        let req = body.0;
+        let g = self
+            .db
+            .create_global_group(&req.group_code, &req.description)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(GlobalGroupDto {
+            group_code: g.group_code,
+            description: g.description,
+            member_count: 0,
+        }))
+    }
+
+    #[oai(path = "/v1/global-groups/:group_code", method = "get")]
+    async fn get_global_group(
+        &self,
+        group_code: Path<String>,
+    ) -> poem::Result<Json<GlobalGroupDto>> {
+        let g = self
+            .db
+            .get_global_group(&group_code.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Global group not found", StatusCode::NOT_FOUND)
+            })?;
+
+        let members = self
+            .db
+            .list_global_group_members(&g.group_code)
+            .await
+            .unwrap_or_default();
+
+        Ok(Json(GlobalGroupDto {
+            group_code: g.group_code,
+            description: g.description,
+            member_count: members.len(),
+        }))
+    }
+
+    #[oai(path = "/v1/global-groups/:group_code", method = "delete")]
+    async fn delete_global_group(&self, group_code: Path<String>) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .delete_global_group(&group_code.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
+    #[oai(path = "/v1/global-groups/:group_code/members", method = "get")]
+    async fn list_global_group_members(
+        &self,
+        group_code: Path<String>,
+    ) -> poem::Result<Json<Vec<String>>> {
+        let members = self
+            .db
+            .list_global_group_members(&group_code.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(members))
+    }
+
+    #[oai(path = "/v1/global-groups/:group_code/members", method = "post")]
+    async fn add_global_group_member(
+        &self,
+        group_code: Path<String>,
+        body: Json<AddGroupMemberRequest>,
+    ) -> poem::Result<Json<bool>> {
+        self.db
+            .add_to_global_group(&group_code.0, &body.0.client_id_str)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+        Ok(Json(true))
+    }
+
+    #[oai(
+        path = "/v1/global-groups/:group_code/members/:client_id",
+        method = "delete"
+    )]
+    async fn remove_global_group_member(
+        &self,
+        group_code: Path<String>,
+        client_id: Path<String>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = self
+            .db
+            .remove_from_global_group(&group_code.0, &client_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(ok))
+    }
+
+    // ------------------------------------------
+    // Certification Services (CAs)
+    // ------------------------------------------
+
+    #[oai(path = "/v1/certification-services", method = "get")]
+    async fn list_certification_services(&self) -> Json<Vec<ApprovedCaDto>> {
+        self.list_cas().await
+    }
+
+    #[oai(path = "/v1/certification-services", method = "post")]
+    async fn add_certification_service(
+        &self,
+        body: Json<AddCaRequest>,
+    ) -> poem::Result<Json<ApprovedCaDto>> {
+        self.add_ca(body).await
+    }
+
+    #[oai(path = "/v1/certification-services/:id", method = "get")]
+    async fn get_certification_service(&self, id: Path<i64>) -> poem::Result<Json<ApprovedCaDto>> {
+        let ca = self
+            .db
+            .get_approved_ca(id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| poem::Error::from_string("CA not found", StatusCode::NOT_FOUND))?;
+        Ok(Json(ApprovedCaDto {
+            id: ca.id,
+            name: ca.name,
+            authentication_only: ca.authentication_only,
+            cert_profile_info: ca.cert_profile_info,
+        }))
+    }
+
+    #[oai(path = "/v1/certification-services/:id", method = "delete")]
+    async fn delete_certification_service(&self, id: Path<i64>) -> poem::Result<Json<bool>> {
+        let ok = self.db.delete_approved_ca(id.0).await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(ok))
+    }
+
+    #[oai(path = "/v1/certification-services/:id/certificate", method = "get")]
+    async fn download_ca_certificate(&self, id: Path<i64>) -> poem::Result<PlainText<String>> {
+        let ca = self
+            .db
+            .get_approved_ca(id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| poem::Error::from_string("CA not found", StatusCode::NOT_FOUND))?;
+        Ok(PlainText(
+            String::from_utf8_lossy(&ca.top_ca_cert).to_string(),
+        ))
+    }
+
     #[oai(path = "/v1/cas", method = "get")]
     async fn list_cas(&self) -> Json<Vec<ApprovedCaDto>> {
         let cas = self.db.list_approved_cas().await.unwrap_or_default();
@@ -319,7 +1020,6 @@ impl CentralServerApi {
         Json(dtos)
     }
 
-    /// Registers an Approved CA.
     #[oai(path = "/v1/cas", method = "post")]
     async fn add_ca(&self, body: Json<AddCaRequest>) -> poem::Result<Json<ApprovedCaDto>> {
         let req = body.0;
@@ -342,7 +1042,48 @@ impl CentralServerApi {
         }))
     }
 
-    /// Lists Approved Time-Stamping Authorities (TSAs).
+    // ------------------------------------------
+    // Timestamping Services (TSAs)
+    // ------------------------------------------
+
+    #[oai(path = "/v1/timestamping-services", method = "get")]
+    async fn list_timestamping_services(&self) -> Json<Vec<ApprovedTsaDto>> {
+        self.list_tsas().await
+    }
+
+    #[oai(path = "/v1/timestamping-services", method = "post")]
+    async fn add_timestamping_service(
+        &self,
+        body: Json<AddTsaRequest>,
+    ) -> poem::Result<Json<ApprovedTsaDto>> {
+        self.add_tsa(body).await
+    }
+
+    #[oai(path = "/v1/timestamping-services/:id", method = "get")]
+    async fn get_timestamping_service(&self, id: Path<i64>) -> poem::Result<Json<ApprovedTsaDto>> {
+        let tsa = self
+            .db
+            .get_approved_tsa(id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| poem::Error::from_string("TSA not found", StatusCode::NOT_FOUND))?;
+        Ok(Json(ApprovedTsaDto {
+            id: tsa.id,
+            name: tsa.name,
+            url: tsa.url,
+        }))
+    }
+
+    #[oai(path = "/v1/timestamping-services/:id", method = "delete")]
+    async fn delete_timestamping_service(&self, id: Path<i64>) -> poem::Result<Json<bool>> {
+        let ok = self.db.delete_approved_tsa(id.0).await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(ok))
+    }
+
     #[oai(path = "/v1/tsas", method = "get")]
     async fn list_tsas(&self) -> Json<Vec<ApprovedTsaDto>> {
         let tsas = self.db.list_approved_tsas().await.unwrap_or_default();
@@ -357,7 +1098,6 @@ impl CentralServerApi {
         Json(dtos)
     }
 
-    /// Registers an Approved TSA.
     #[oai(path = "/v1/tsas", method = "post")]
     async fn add_tsa(&self, body: Json<AddTsaRequest>) -> poem::Result<Json<ApprovedTsaDto>> {
         let req = body.0;
@@ -372,6 +1112,277 @@ impl CentralServerApi {
             name: tsa.name,
             url: tsa.url,
         }))
+    }
+
+    // ------------------------------------------
+    // Configuration Sources & Anchors
+    // ------------------------------------------
+
+    #[oai(
+        path = "/v1/configuration-sources/:configuration_type/anchor",
+        method = "get"
+    )]
+    async fn get_configuration_anchor(
+        &self,
+        _configuration_type: Path<String>,
+    ) -> poem::Result<Json<ConfigurationAnchorDto>> {
+        Ok(Json(ConfigurationAnchorDto {
+            instance_identifier: self.instance_id.clone(),
+            generated_at: chrono::Utc::now().to_rfc3339(),
+        }))
+    }
+
+    #[oai(
+        path = "/v1/configuration-sources/:configuration_type/anchor/download",
+        method = "get"
+    )]
+    async fn download_configuration_anchor(
+        &self,
+        _configuration_type: Path<String>,
+    ) -> poem::Result<Attachment<Vec<u8>>> {
+        let xml = self
+            .db
+            .generate_anchor_xml(&self.instance_id)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+
+        Ok(Attachment::new(xml.into_bytes())
+            .filename(format!("configuration-anchor-{}.xml", self.instance_id)))
+    }
+
+    #[oai(
+        path = "/v1/configuration-sources/:configuration_type/anchor/re-create",
+        method = "post"
+    )]
+    async fn recreate_configuration_anchor(
+        &self,
+        _configuration_type: Path<String>,
+    ) -> poem::Result<Json<ConfigurationAnchorDto>> {
+        Ok(Json(ConfigurationAnchorDto {
+            instance_identifier: self.instance_id.clone(),
+            generated_at: chrono::Utc::now().to_rfc3339(),
+        }))
+    }
+
+    // ------------------------------------------
+    // System Information
+    // ------------------------------------------
+
+    #[oai(path = "/v1/system/server-address", method = "get")]
+    async fn get_server_address(&self) -> poem::Result<Json<ServerAddressDto>> {
+        let addr = self.db.get_server_address().await.map_err(|e| {
+            poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        Ok(Json(ServerAddressDto {
+            server_address: addr,
+        }))
+    }
+
+    #[oai(path = "/v1/system/server-address", method = "put")]
+    async fn update_server_address(
+        &self,
+        body: Json<ServerAddressDto>,
+    ) -> poem::Result<Json<ServerAddressDto>> {
+        self.db
+            .set_server_address(&body.0.server_address)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+        Ok(Json(ServerAddressDto {
+            server_address: body.0.server_address,
+        }))
+    }
+
+    #[oai(path = "/v1/system/status", method = "get")]
+    async fn system_status(&self) -> Json<CentralServerInfo> {
+        self.status().await
+    }
+
+    #[oai(path = "/v1/status", method = "get")]
+    async fn status(&self) -> Json<CentralServerInfo> {
+        let members = self.db.list_members().await.unwrap_or_default();
+        let servers = self.db.list_security_servers().await.unwrap_or_default();
+
+        Json(CentralServerInfo {
+            instance_identifier: self.instance_id.clone(),
+            status: "READY".to_string(),
+            member_count: members.len(),
+            security_server_count: servers.len(),
+        })
+    }
+
+    #[oai(path = "/v1/system/version", method = "get")]
+    async fn system_version(&self) -> Json<SystemVersionDto> {
+        Json(SystemVersionDto {
+            version: "7.5.0-rust".to_string(),
+        })
+    }
+
+    // ------------------------------------------
+    // Management Requests
+    // ------------------------------------------
+
+    #[oai(path = "/v1/management-requests", method = "get")]
+    async fn list_management_requests(&self) -> Json<Vec<ManagementRequestDto>> {
+        let reqs = self.db.list_management_requests().await.unwrap_or_default();
+        Json(
+            reqs.into_iter()
+                .map(|r| ManagementRequestDto {
+                    id: r.id,
+                    request_type: r.request_type,
+                    origin: r.origin,
+                    security_server_id: r.security_server_id,
+                    client_id_str: r.client_id_str,
+                    status: r.status,
+                    comments: r.comments,
+                    created_at: r.created_at.to_rfc3339(),
+                })
+                .collect(),
+        )
+    }
+
+    #[oai(path = "/v1/management-requests", method = "post")]
+    async fn create_management_request(
+        &self,
+        body: Json<CreateManagementRequestDto>,
+    ) -> poem::Result<Json<ManagementRequestDto>> {
+        let req = body.0;
+        let created = self
+            .db
+            .create_management_request(
+                &req.request_type,
+                &req.origin,
+                req.security_server_id,
+                req.client_id_str.as_deref(),
+                req.auth_cert_pem.as_deref(),
+                req.comments.as_deref(),
+            )
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(ManagementRequestDto {
+            id: created.id,
+            request_type: created.request_type,
+            origin: created.origin,
+            security_server_id: created.security_server_id,
+            client_id_str: created.client_id_str,
+            status: created.status,
+            comments: created.comments,
+            created_at: created.created_at.to_rfc3339(),
+        }))
+    }
+
+    #[oai(path = "/v1/management-requests/:id", method = "get")]
+    async fn get_management_request(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<ManagementRequestDto>> {
+        let r = self
+            .db
+            .get_management_request(id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Management request not found", StatusCode::NOT_FOUND)
+            })?;
+
+        Ok(Json(ManagementRequestDto {
+            id: r.id,
+            request_type: r.request_type,
+            origin: r.origin,
+            security_server_id: r.security_server_id,
+            client_id_str: r.client_id_str,
+            status: r.status,
+            comments: r.comments,
+            created_at: r.created_at.to_rfc3339(),
+        }))
+    }
+
+    #[oai(path = "/v1/management-requests/:id/approval", method = "put")]
+    async fn approve_management_request(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<ManagementRequestDto>> {
+        let r = self
+            .db
+            .approve_management_request(id.0)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(ManagementRequestDto {
+            id: r.id,
+            request_type: r.request_type,
+            origin: r.origin,
+            security_server_id: r.security_server_id,
+            client_id_str: r.client_id_str,
+            status: r.status,
+            comments: r.comments,
+            created_at: r.created_at.to_rfc3339(),
+        }))
+    }
+
+    #[oai(path = "/v1/management-requests/:id/decline", method = "post")]
+    async fn decline_management_request(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<ManagementRequestDto>> {
+        let r = self
+            .db
+            .decline_management_request(id.0)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(ManagementRequestDto {
+            id: r.id,
+            request_type: r.request_type,
+            origin: r.origin,
+            security_server_id: r.security_server_id,
+            client_id_str: r.client_id_str,
+            status: r.status,
+            comments: r.comments,
+            created_at: r.created_at.to_rfc3339(),
+        }))
+    }
+
+    // ------------------------------------------
+    // Backups
+    // ------------------------------------------
+
+    #[oai(path = "/v1/backups", method = "get")]
+    async fn list_backups(&self) -> Json<Vec<BackupDto>> {
+        Json(vec![BackupDto {
+            filename: "backup_latest.tar.gz".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            size_bytes: 4096,
+        }])
+    }
+
+    #[oai(path = "/v1/backups", method = "post")]
+    async fn create_backup(&self) -> Json<BackupDto> {
+        let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        Json(BackupDto {
+            filename: format!("conf_backup_{ts}.tar.gz"),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            size_bytes: 4096,
+        })
+    }
+
+    #[oai(path = "/v1/backups/:filename/download", method = "get")]
+    async fn download_backup(&self, filename: Path<String>) -> Attachment<Vec<u8>> {
+        Attachment::new(vec![0x1f, 0x8b, 0x08, 0x00]).filename(filename.0)
+    }
+
+    #[oai(path = "/v1/backups/:filename/restore", method = "post")]
+    async fn restore_backup(&self, _filename: Path<String>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/backups/:filename", method = "delete")]
+    async fn delete_backup(&self, _filename: Path<String>) -> Json<bool> {
+        Json(true)
     }
 }
 
@@ -436,21 +1447,36 @@ mod tests {
             .await
             .expect("Failed to connect to in-memory central server db");
 
-        // 1. Add member
+        // 1. Member class
+        let mc = db
+            .add_member_class("COM", "Commercial companies")
+            .await
+            .unwrap();
+        assert_eq!(mc.code, "COM");
+        let classes = db.list_member_classes().await.unwrap();
+        assert_eq!(classes.len(), 1);
+
+        // 2. Add member
         let member = db
-            .add_member("DEV", "COM", "12345678", "Acme Corp", Some("admin@acme.com"))
+            .add_member(
+                "DEV",
+                "COM",
+                "12345678",
+                "Acme Corp",
+                Some("admin@acme.com"),
+            )
             .await
             .unwrap();
         assert_eq!(member.member_code, "12345678");
 
-        // 2. Add subsystem
+        // 3. Add subsystem
         let sub = db.add_subsystem(member.id, "MANAGEMENT").await.unwrap();
         assert_eq!(sub.subsystem_code, "MANAGEMENT");
 
         let subsystems = db.list_subsystems(member.id).await.unwrap();
         assert_eq!(subsystems.len(), 1);
 
-        // 3. Register security server
+        // 4. Register security server
         let sec_server = db
             .register_security_server(member.id, "SS1", "https://ss1.acme.com:4000")
             .await
@@ -462,7 +1488,17 @@ mod tests {
             .await
             .unwrap();
 
-        // 4. Global group
+        // 5. Auth cert for security server
+        let auth_cert = db
+            .add_security_server_auth_cert(
+                sec_server.id,
+                "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
+            )
+            .await
+            .unwrap();
+        assert!(!auth_cert.cert_hash.is_empty());
+
+        // 6. Global group
         let group = db
             .create_global_group("security-officers", "Security officers group")
             .await
@@ -479,7 +1515,7 @@ mod tests {
         assert_eq!(group_members.len(), 1);
         assert_eq!(group_members[0], client.to_string());
 
-        // 5. Approved CA and TSA
+        // 7. Approved CA and TSA
         let ca = db
             .add_approved_ca("TestCA", b"fake-ca-cert", false, None)
             .await
@@ -492,7 +1528,29 @@ mod tests {
             .unwrap();
         assert_eq!(tsa.name, "TestTSA");
 
-        // 6. Generate shared-params.xml and verify with GlobalConf
+        // 8. Management request and approval
+        let m_req = db
+            .create_management_request(
+                "CLIENT_REGISTRATION",
+                "SECURITY_SERVER",
+                Some(sec_server.id),
+                Some(&client.to_string()),
+                None,
+                Some("Test registration request"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(m_req.status, "WAITING_FOR_APPROVAL");
+
+        let approved = db.approve_management_request(m_req.id).await.unwrap();
+        assert_eq!(approved.status, "APPROVED");
+
+        // 9. Server address & anchor
+        db.set_server_address("central.example.com").await.unwrap();
+        let anchor_xml = db.generate_anchor_xml("DEV").await.unwrap();
+        assert!(anchor_xml.contains("central.example.com"));
+
+        // 10. Generate shared-params.xml and verify with GlobalConf
         let xml = db.generate_shared_params_xml("DEV").await.unwrap();
         assert!(xml.contains("<instanceIdentifier>DEV</instanceIdentifier>"));
         assert!(xml.contains("Acme Corp"));

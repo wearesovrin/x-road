@@ -47,7 +47,11 @@ impl DatabaseServerConf {
     }
 
     /// Registers a client in the server configuration.
-    pub async fn add_client(&self, client_id: &ClientId, is_auth: bool) -> XRoadResult<client::Model> {
+    pub async fn add_client(
+        &self,
+        client_id: &ClientId,
+        is_auth: bool,
+    ) -> XRoadResult<client::Model> {
         let existing = self.get_client(client_id).await?;
         if let Some(c) = existing {
             return Ok(c);
@@ -151,7 +155,11 @@ impl DatabaseServerConf {
     }
 
     /// Grants access for a client to invoke a service.
-    pub async fn grant_access(&self, service_id: &ServiceId, client_id: &ClientId) -> XRoadResult<()> {
+    pub async fn grant_access(
+        &self,
+        service_id: &ServiceId,
+        client_id: &ClientId,
+    ) -> XRoadResult<()> {
         let service_id_str = service_id.to_string();
         let client_id_str = client_id.to_string();
 
@@ -178,7 +186,11 @@ impl DatabaseServerConf {
     }
 
     /// Revokes access for a client to invoke a service.
-    pub async fn revoke_access(&self, service_id: &ServiceId, client_id: &ClientId) -> XRoadResult<()> {
+    pub async fn revoke_access(
+        &self,
+        service_id: &ServiceId,
+        client_id: &ClientId,
+    ) -> XRoadResult<()> {
         access_right::Entity::delete_many()
             .filter(access_right::Column::ServiceIdStr.eq(service_id.to_string()))
             .filter(access_right::Column::SubjectClientIdStr.eq(client_id.to_string()))
@@ -244,7 +256,11 @@ impl DatabaseServerConf {
     }
 
     /// Stores a certificate for a client.
-    pub async fn store_certificate(&self, client_id: &ClientId, cert_der: &[u8]) -> XRoadResult<()> {
+    pub async fn store_certificate(
+        &self,
+        client_id: &ClientId,
+        cert_der: &[u8],
+    ) -> XRoadResult<()> {
         let client_model = self
             .get_client(client_id)
             .await?
@@ -332,7 +348,10 @@ impl DatabaseServerConf {
     }
 
     /// Lists service descriptions for a client.
-    pub async fn list_service_descriptions(&self, client_id: &ClientId) -> XRoadResult<Vec<service_description::Model>> {
+    pub async fn list_service_descriptions(
+        &self,
+        client_id: &ClientId,
+    ) -> XRoadResult<Vec<service_description::Model>> {
         let client_model = self
             .get_client(client_id)
             .await?
@@ -346,7 +365,10 @@ impl DatabaseServerConf {
     }
 
     /// Gets a service description by ID.
-    pub async fn get_service_description(&self, id: i64) -> XRoadResult<Option<service_description::Model>> {
+    pub async fn get_service_description(
+        &self,
+        id: i64,
+    ) -> XRoadResult<Option<service_description::Model>> {
         service_description::Entity::find_by_id(id)
             .one(self.raw_connection())
             .await
@@ -359,35 +381,48 @@ impl DatabaseServerConf {
             .filter(service::Column::ServiceDescriptionId.eq(id))
             .exec(self.raw_connection())
             .await
-            .map_err(|e| XRoadError::Database(format!("Failed to delete associated services: {e}")))?;
+            .map_err(|e| {
+                XRoadError::Database(format!("Failed to delete associated services: {e}"))
+            })?;
 
         service_description::Entity::delete_by_id(id)
             .exec(self.raw_connection())
             .await
-            .map_err(|e| XRoadError::Database(format!("Failed to delete service description: {e}")))?;
+            .map_err(|e| {
+                XRoadError::Database(format!("Failed to delete service description: {e}"))
+            })?;
         Ok(())
     }
 
     /// Enables or disables a service description.
-    pub async fn set_service_description_disabled(&self, id: i64, disabled: bool, notice: Option<&str>) -> XRoadResult<()> {
+    pub async fn set_service_description_disabled(
+        &self,
+        id: i64,
+        disabled: bool,
+        notice: Option<&str>,
+    ) -> XRoadResult<()> {
         let desc = service_description::Entity::find_by_id(id)
             .one(self.raw_connection())
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query service description: {e}")))?
-            .ok_or_else(|| XRoadError::Configuration(format!("Service description not found: {id}")))?;
+            .ok_or_else(|| {
+                XRoadError::Configuration(format!("Service description not found: {id}"))
+            })?;
 
         let mut active: service_description::ActiveModel = desc.into();
         active.disabled = Set(disabled);
         active.disabled_notice = Set(notice.map(ToString::to_string));
-        active
-            .update(self.raw_connection())
-            .await
-            .map_err(|e| XRoadError::Database(format!("Failed to update service description: {e}")))?;
+        active.update(self.raw_connection()).await.map_err(|e| {
+            XRoadError::Database(format!("Failed to update service description: {e}"))
+        })?;
         Ok(())
     }
 
     /// Lists services registered under a client.
-    pub async fn list_services_for_client(&self, client_id: &ClientId) -> XRoadResult<Vec<service::Model>> {
+    pub async fn list_services_for_client(
+        &self,
+        client_id: &ClientId,
+    ) -> XRoadResult<Vec<service::Model>> {
         let descriptions = self.list_service_descriptions(client_id).await?;
         let desc_ids: Vec<i64> = descriptions.into_iter().map(|d| d.id).collect();
 
@@ -425,14 +460,20 @@ impl DatabaseServerConf {
     }
 
     /// Lists subjects (clients) with access rights to a service.
-    pub async fn list_service_access_rights(&self, service_id_str: &str) -> XRoadResult<Vec<String>> {
+    pub async fn list_service_access_rights(
+        &self,
+        service_id_str: &str,
+    ) -> XRoadResult<Vec<String>> {
         let rights = access_right::Entity::find()
             .filter(access_right::Column::ServiceIdStr.eq(service_id_str))
             .all(self.raw_connection())
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query access rights: {e}")))?;
 
-        Ok(rights.into_iter().map(|r| r.subject_client_id_str).collect())
+        Ok(rights
+            .into_iter()
+            .map(|r| r.subject_client_id_str)
+            .collect())
     }
 
     /// Registers a custom endpoint on a service.
@@ -487,7 +528,10 @@ impl DatabaseServerConf {
     pub async fn delete_endpoint(&self, id: i64) -> XRoadResult<()> {
         let ep = self.get_endpoint(id).await?;
         if let Some(endpoint) = ep {
-            let ep_ref = format!("EP:{}:{}:{}", endpoint.service_code, endpoint.method, endpoint.path);
+            let ep_ref = format!(
+                "EP:{}:{}:{}",
+                endpoint.service_code, endpoint.method, endpoint.path
+            );
             let _ = access_right::Entity::delete_many()
                 .filter(access_right::Column::ServiceIdStr.eq(ep_ref))
                 .exec(self.raw_connection())
@@ -502,9 +546,14 @@ impl DatabaseServerConf {
     }
 
     /// Grants access for a client to an endpoint.
-    pub async fn grant_endpoint_access(&self, endpoint_id: i64, subject_id: &str) -> XRoadResult<()> {
-        let ep = self.get_endpoint(endpoint_id).await?
-            .ok_or_else(|| XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}")))?;
+    pub async fn grant_endpoint_access(
+        &self,
+        endpoint_id: i64,
+        subject_id: &str,
+    ) -> XRoadResult<()> {
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
 
         let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
         let existing = access_right::Entity::find()
@@ -529,9 +578,14 @@ impl DatabaseServerConf {
     }
 
     /// Revokes access for a client to an endpoint.
-    pub async fn revoke_endpoint_access(&self, endpoint_id: i64, subject_id: &str) -> XRoadResult<()> {
-        let ep = self.get_endpoint(endpoint_id).await?
-            .ok_or_else(|| XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}")))?;
+    pub async fn revoke_endpoint_access(
+        &self,
+        endpoint_id: i64,
+        subject_id: &str,
+    ) -> XRoadResult<()> {
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
 
         let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
         access_right::Entity::delete_many()
@@ -545,8 +599,9 @@ impl DatabaseServerConf {
 
     /// Lists clients with access rights to an endpoint.
     pub async fn list_endpoint_access_rights(&self, endpoint_id: i64) -> XRoadResult<Vec<String>> {
-        let ep = self.get_endpoint(endpoint_id).await?
-            .ok_or_else(|| XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}")))?;
+        let ep = self.get_endpoint(endpoint_id).await?.ok_or_else(|| {
+            XRoadError::Configuration(format!("Endpoint not found: {endpoint_id}"))
+        })?;
 
         let ep_ref = format!("EP:{}:{}:{}", ep.service_code, ep.method, ep.path);
         let rights = access_right::Entity::find()
@@ -555,7 +610,10 @@ impl DatabaseServerConf {
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query endpoint access: {e}")))?;
 
-        Ok(rights.into_iter().map(|r| r.subject_client_id_str).collect())
+        Ok(rights
+            .into_iter()
+            .map(|r| r.subject_client_id_str)
+            .collect())
     }
 
     /// Creates a local group for a client.
@@ -583,7 +641,10 @@ impl DatabaseServerConf {
     }
 
     /// Lists local groups for a client.
-    pub async fn list_local_groups(&self, client_id: &ClientId) -> XRoadResult<Vec<local_group::Model>> {
+    pub async fn list_local_groups(
+        &self,
+        client_id: &ClientId,
+    ) -> XRoadResult<Vec<local_group::Model>> {
         let client_model = self
             .get_client(client_id)
             .await?
@@ -644,7 +705,11 @@ impl DatabaseServerConf {
     }
 
     /// Removes a member client from a local group.
-    pub async fn remove_group_member(&self, group_id: i64, member_id: &ClientId) -> XRoadResult<()> {
+    pub async fn remove_group_member(
+        &self,
+        group_id: i64,
+        member_id: &ClientId,
+    ) -> XRoadResult<()> {
         let member_str = member_id.to_string();
         group_member::Entity::delete_many()
             .filter(group_member::Column::LocalGroupId.eq(group_id))
@@ -663,7 +728,10 @@ impl DatabaseServerConf {
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to query group members: {e}")))?;
 
-        Ok(members.into_iter().map(|m| m.member_client_id_str).collect())
+        Ok(members
+            .into_iter()
+            .map(|m| m.member_client_id_str)
+            .collect())
     }
 }
 
@@ -671,7 +739,9 @@ impl DatabaseServerConf {
 impl ServerConfProvider for DatabaseServerConf {
     async fn is_client_allowed(&self, client_id: &ClientId) -> XRoadResult<bool> {
         let client = self.get_client(client_id).await?;
-        Ok(client.map(|c| c.client_status == "REGISTERED").unwrap_or(false))
+        Ok(client
+            .map(|c| c.client_status == "REGISTERED")
+            .unwrap_or(false))
     }
 
     async fn is_service_allowed(
@@ -686,7 +756,8 @@ impl ServerConfProvider for DatabaseServerConf {
             .add(access_right::Column::ServiceIdStr.eq(&service_id_str));
 
         if service_id.service_version.is_none() {
-            cond = cond.add(access_right::Column::ServiceIdStr.starts_with(format!("{service_id_str}/")));
+            cond = cond
+                .add(access_right::Column::ServiceIdStr.starts_with(format!("{service_id_str}/")));
         } else {
             let without_version = ServiceId::new_unchecked(
                 service_id.client.clone(),
@@ -714,7 +785,10 @@ impl ServerConfProvider for DatabaseServerConf {
                     .await
                 {
                     for g in groups {
-                        subject_cond = subject_cond.add(access_right::Column::SubjectClientIdStr.eq(format!("GROUP:{}", g.group_code)));
+                        subject_cond = subject_cond.add(
+                            access_right::Column::SubjectClientIdStr
+                                .eq(format!("GROUP:{}", g.group_code)),
+                        );
                     }
                 }
             }
@@ -750,7 +824,11 @@ impl ServerConfProvider for DatabaseServerConf {
         let models = self.list_services_for_client(client_id).await?;
         let mut services = Vec::new();
         for m in models {
-            if let Ok(svc) = ServiceId::new(client_id.clone(), &m.service_code, m.service_version.as_deref()) {
+            if let Ok(svc) = ServiceId::new(
+                client_id.clone(),
+                &m.service_code,
+                m.service_version.as_deref(),
+            ) {
                 services.push(svc);
             }
         }
@@ -765,7 +843,11 @@ impl ServerConfProvider for DatabaseServerConf {
         let all_services = self.list_services(producer).await?;
         let mut allowed = Vec::new();
         for svc in all_services {
-            if self.is_service_allowed(consumer, &svc).await.unwrap_or(false) {
+            if self
+                .is_service_allowed(consumer, &svc)
+                .await
+                .unwrap_or(false)
+            {
                 allowed.push(svc);
             }
         }

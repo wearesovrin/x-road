@@ -4,7 +4,7 @@ use globalconf::GlobalConf;
 use identifiers::{ClientId, ServiceId};
 use messagelog::MessageLogDb;
 use poem::Route;
-use poem_openapi::{param::Path, payload::Json, Object, OpenApi, OpenApiService};
+use poem_openapi::{Object, OpenApi, OpenApiService, param::Path, payload::Json};
 use sea_orm::EntityTrait;
 use serverconf::{DatabaseServerConf, ServiceType};
 use signer::SignerServiceImpl;
@@ -405,8 +405,18 @@ impl AdminApi {
     /// Returns the current operational status and version of the Security Server.
     #[oai(path = "/v1/status", method = "get")]
     async fn get_status(&self) -> Json<ServerStatus> {
-        let clients = self.state.server_conf.list_clients().await.unwrap_or_default();
-        let logs = self.state.message_log.find_unarchived(100).await.unwrap_or_default();
+        let clients = self
+            .state
+            .server_conf
+            .list_clients()
+            .await
+            .unwrap_or_default();
+        let logs = self
+            .state
+            .message_log
+            .find_unarchived(100)
+            .await
+            .unwrap_or_default();
         let owner = self.state.server_conf.get_owner().await.unwrap_or_default();
 
         Json(ServerStatus {
@@ -429,7 +439,10 @@ impl AdminApi {
             has_software_token_pin: token.as_ref().map(|t| t.has_pin).unwrap_or(false),
             owner_client_id: owner.map(|o| {
                 if let Some(ref sub) = o.subsystem_code {
-                    format!("{}/{}/{}/{}", o.xroad_instance, o.member_class, o.member_code, sub)
+                    format!(
+                        "{}/{}/{}/{}",
+                        o.xroad_instance, o.member_class, o.member_code, sub
+                    )
                 } else {
                     format!("{}/{}/{}", o.xroad_instance, o.member_class, o.member_code)
                 }
@@ -439,7 +452,10 @@ impl AdminApi {
 
     /// Initializes the Security Server with an owner client and initial PIN.
     #[oai(path = "/v1/initialization", method = "post")]
-    async fn initialize_server(&self, req: Json<InitializeServerReq>) -> Json<SimpleSuccessResponse> {
+    async fn initialize_server(
+        &self,
+        req: Json<InitializeServerReq>,
+    ) -> Json<SimpleSuccessResponse> {
         let r = req.0;
         let client_id = if let Some(ref sub) = r.subsystem_code {
             ClientId::subsystem_unchecked(&r.instance, &r.member_class, &r.member_code, sub)
@@ -454,7 +470,11 @@ impl AdminApi {
             });
         }
         let _ = self.state.server_conf.make_owner(&client_id).await;
-        let _ = self.state.signer.set_token_pin("0", None, &r.software_token_pin).await;
+        let _ = self
+            .state
+            .signer
+            .set_token_pin("0", None, &r.software_token_pin)
+            .await;
 
         Json(SimpleSuccessResponse {
             success: true,
@@ -469,7 +489,12 @@ impl AdminApi {
     /// Lists all registered clients.
     #[oai(path = "/v1/clients", method = "get")]
     async fn list_clients(&self) -> Json<Vec<ClientDto>> {
-        let clients = self.state.server_conf.list_clients().await.unwrap_or_default();
+        let clients = self
+            .state
+            .server_conf
+            .list_clients()
+            .await
+            .unwrap_or_default();
         let mut list = Vec::new();
         for c in clients {
             if let Ok(Some(m)) = self.state.server_conf.get_client(&c).await {
@@ -525,7 +550,9 @@ impl AdminApi {
             .get_client(&client_id)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Client not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Client not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         Ok(Json(ClientDto {
             id: client_id.to_string(),
@@ -605,7 +632,10 @@ impl AdminApi {
 
     /// Lists TLS certificates registered for a client.
     #[oai(path = "/v1/clients/:id/tls-certificates", method = "get")]
-    async fn list_client_tls_certificates(&self, id: Path<String>) -> poem::Result<Json<Vec<String>>> {
+    async fn list_client_tls_certificates(
+        &self,
+        id: Path<String>,
+    ) -> poem::Result<Json<Vec<String>>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
         let certs = self
             .state
@@ -712,7 +742,10 @@ impl AdminApi {
 
     /// Deletes a service description.
     #[oai(path = "/v1/service-descriptions/:id", method = "delete")]
-    async fn delete_service_description(&self, id: Path<i64>) -> poem::Result<Json<SimpleSuccessResponse>> {
+    async fn delete_service_description(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
         self.state
             .server_conf
             .delete_service_description(id.0)
@@ -727,7 +760,10 @@ impl AdminApi {
 
     /// Enables a service description.
     #[oai(path = "/v1/service-descriptions/:id/enable", method = "put")]
-    async fn enable_service_description(&self, id: Path<i64>) -> poem::Result<Json<SimpleSuccessResponse>> {
+    async fn enable_service_description(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
         self.state
             .server_conf
             .set_service_description_disabled(id.0, false, None)
@@ -742,7 +778,10 @@ impl AdminApi {
 
     /// Disables a service description.
     #[oai(path = "/v1/service-descriptions/:id/disable", method = "put")]
-    async fn disable_service_description(&self, id: Path<i64>) -> poem::Result<Json<SimpleSuccessResponse>> {
+    async fn disable_service_description(
+        &self,
+        id: Path<i64>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
         self.state
             .server_conf
             .set_service_description_disabled(id.0, true, Some("Disabled by administrator"))
@@ -809,7 +848,9 @@ impl AdminApi {
             .get_service_by_id(id.0)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         Ok(Json(ServiceDto {
             id: svc.id,
@@ -849,7 +890,9 @@ impl AdminApi {
             .get_service_by_id(id.0)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         let rights = self
             .state
@@ -877,7 +920,9 @@ impl AdminApi {
             .get_service_by_id(id.0)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         let desc = self
             .state
@@ -885,18 +930,34 @@ impl AdminApi {
             .get_service_description(svc.service_description_id)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Service description not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string(
+                    "Service description not found",
+                    poem::http::StatusCode::NOT_FOUND,
+                )
+            })?;
 
         let client = serverconf::entities::client::Entity::find_by_id(desc.client_id)
             .one(self.state.server_conf.raw_connection())
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Client not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Client not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         let client_id = if let Some(sub) = client.subsystem_code {
-            ClientId::subsystem_unchecked(client.xroad_instance, client.member_class, client.member_code, sub)
+            ClientId::subsystem_unchecked(
+                client.xroad_instance,
+                client.member_class,
+                client.member_code,
+                sub,
+            )
         } else {
-            ClientId::member_unchecked(client.xroad_instance, client.member_class, client.member_code)
+            ClientId::member_unchecked(
+                client.xroad_instance,
+                client.member_class,
+                client.member_code,
+            )
         };
 
         let ep = self
@@ -924,7 +985,9 @@ impl AdminApi {
             .get_endpoint(id.0)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Endpoint not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Endpoint not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
         Ok(Json(EndpointDto {
             id: ep.id,
@@ -996,7 +1059,10 @@ impl AdminApi {
 
         Ok(Json(SimpleSuccessResponse {
             success: true,
-            message: format!("Access revoked for endpoint {} from {}", id.0, body.member_id),
+            message: format!(
+                "Access revoked for endpoint {} from {}",
+                id.0, body.member_id
+            ),
         }))
     }
 
@@ -1006,7 +1072,10 @@ impl AdminApi {
 
     /// Lists local groups configured for a client.
     #[oai(path = "/v1/clients/:id/local-groups", method = "get")]
-    async fn list_client_local_groups(&self, id: Path<String>) -> poem::Result<Json<Vec<LocalGroupDto>>> {
+    async fn list_client_local_groups(
+        &self,
+        id: Path<String>,
+    ) -> poem::Result<Json<Vec<LocalGroupDto>>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
         let groups = self
             .state
@@ -1017,7 +1086,12 @@ impl AdminApi {
 
         let mut list = Vec::new();
         for g in groups {
-            let members = self.state.server_conf.list_group_members(g.id).await.unwrap_or_default();
+            let members = self
+                .state
+                .server_conf
+                .list_group_members(g.id)
+                .await
+                .unwrap_or_default();
             list.push(LocalGroupDto {
                 id: g.id,
                 group_code: g.group_code,
@@ -1062,9 +1136,16 @@ impl AdminApi {
             .get_local_group(id.0)
             .await
             .map_err(poem::error::InternalServerError)?
-            .ok_or_else(|| poem::Error::from_string("Local group not found", poem::http::StatusCode::NOT_FOUND))?;
+            .ok_or_else(|| {
+                poem::Error::from_string("Local group not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
 
-        let members = self.state.server_conf.list_group_members(g.id).await.unwrap_or_default();
+        let members = self
+            .state
+            .server_conf
+            .list_group_members(g.id)
+            .await
+            .unwrap_or_default();
         Ok(Json(LocalGroupDto {
             id: g.id,
             group_code: g.group_code,
@@ -1137,7 +1218,10 @@ impl AdminApi {
 
         Ok(Json(SimpleSuccessResponse {
             success: true,
-            message: format!("Member {} removed from local group {}", body.member_id, id.0),
+            message: format!(
+                "Member {} removed from local group {}",
+                body.member_id, id.0
+            ),
         }))
     }
 
@@ -1167,7 +1251,12 @@ impl AdminApi {
             }
         };
 
-        match self.state.server_conf.grant_access(&service_id, &client_id).await {
+        match self
+            .state
+            .server_conf
+            .grant_access(&service_id, &client_id)
+            .await
+        {
             Ok(_) => Json(SimpleSuccessResponse {
                 success: true,
                 message: format!("Access granted for {client_id} to {service_id}"),
@@ -1201,7 +1290,12 @@ impl AdminApi {
             }
         };
 
-        match self.state.server_conf.revoke_access(&service_id, &client_id).await {
+        match self
+            .state
+            .server_conf
+            .revoke_access(&service_id, &client_id)
+            .await
+        {
             Ok(_) => Json(SimpleSuccessResponse {
                 success: true,
                 message: format!("Access revoked for {client_id} to {service_id}"),
@@ -1246,7 +1340,10 @@ impl AdminApi {
                 success: true,
                 message: format!("Token {} logged in", id.0),
             })),
-            Ok(false) => Err(poem::Error::from_string("Invalid PIN", poem::http::StatusCode::UNAUTHORIZED)),
+            Ok(false) => Err(poem::Error::from_string(
+                "Invalid PIN",
+                poem::http::StatusCode::UNAUTHORIZED,
+            )),
             Err(e) => Err(poem::error::InternalServerError(e)),
         }
     }
@@ -1333,12 +1430,9 @@ impl AdminApi {
     /// Gets key details by ID.
     #[oai(path = "/v1/keys/:id", method = "get")]
     async fn get_key(&self, id: Path<String>) -> poem::Result<Json<KeyDto>> {
-        let k = self
-            .state
-            .signer
-            .get_key(&id.0)
-            .await
-            .ok_or_else(|| poem::Error::from_string("Key not found", poem::http::StatusCode::NOT_FOUND))?;
+        let k = self.state.signer.get_key(&id.0).await.ok_or_else(|| {
+            poem::Error::from_string("Key not found", poem::http::StatusCode::NOT_FOUND)
+        })?;
 
         Ok(Json(KeyDto {
             id: k.id,
@@ -1389,7 +1483,10 @@ impl AdminApi {
 
     /// Imports a certificate for a key.
     #[oai(path = "/v1/token-certificates", method = "post")]
-    async fn import_certificate(&self, body: Json<ImportCertReq>) -> poem::Result<Json<SimpleSuccessResponse>> {
+    async fn import_certificate(
+        &self,
+        body: Json<ImportCertReq>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let der = base64::engine::general_purpose::STANDARD
             .decode(&body.cert_der_base64)
             .map_err(poem::error::BadRequest)?;
@@ -1426,7 +1523,10 @@ impl AdminApi {
     }
 
     /// Initiates automated ACME certificate order (RFC 8555) via ACME protocol.
-    #[oai(path = "/v1/certificate-authorities/:ca_name/acme-order", method = "post")]
+    #[oai(
+        path = "/v1/certificate-authorities/:ca_name/acme-order",
+        method = "post"
+    )]
     async fn initiate_acme_order(
         &self,
         ca_name: Path<String>,
@@ -1436,10 +1536,8 @@ impl AdminApi {
             Some("AUTHENTICATION") => acme::AcmeKeyPurpose::Authentication,
             _ => acme::AcmeKeyPurpose::Signing,
         };
-        let _acme_cfg = acme::AcmeConfig::lets_encrypt_staging(
-            format!("admin@{}", body.domain),
-            purpose,
-        );
+        let _acme_cfg =
+            acme::AcmeConfig::lets_encrypt_staging(format!("admin@{}", body.domain), purpose);
 
         let order_id = format!("acme-order-{}", uuid::Uuid::new_v4());
         tracing::info!(
@@ -1627,10 +1725,7 @@ impl AdminApi {
     #[oai(path = "/v1/api-keys/validate", method = "post")]
     async fn validate_api_key(&self, req: Json<ValidateApiKeyReq>) -> Json<ValidateApiKeyResponse> {
         match self.state.server_conf.validate_api_key(&req.key).await {
-            Ok(Some(roles)) => Json(ValidateApiKeyResponse {
-                valid: true,
-                roles,
-            }),
+            Ok(Some(roles)) => Json(ValidateApiKeyResponse { valid: true, roles }),
             _ => Json(ValidateApiKeyResponse {
                 valid: false,
                 roles: vec![],
@@ -1651,7 +1746,8 @@ impl AdminApi {
             }
         };
 
-        let der_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.cert_der_base64) {
+        let der_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.cert_der_base64)
+        {
             Ok(b) => b,
             Err(e) => {
                 return Json(SimpleSuccessResponse {
@@ -1661,7 +1757,12 @@ impl AdminApi {
             }
         };
 
-        match self.state.server_conf.store_certificate(&client_id, &der_bytes).await {
+        match self
+            .state
+            .server_conf
+            .store_certificate(&client_id, &der_bytes)
+            .await
+        {
             Ok(_) => Json(SimpleSuccessResponse {
                 success: true,
                 message: format!("Certificate stored for {client_id}"),
@@ -1676,7 +1777,12 @@ impl AdminApi {
     /// Retrieves recent unarchived audit log records from the message log.
     #[oai(path = "/v1/messagelog/recent", method = "get")]
     async fn recent_logs(&self) -> Json<Vec<LogRecordResponse>> {
-        let records = self.state.message_log.find_unarchived(50).await.unwrap_or_default();
+        let records = self
+            .state
+            .message_log
+            .find_unarchived(50)
+            .await
+            .unwrap_or_default();
         let list = records
             .into_iter()
             .map(|r| LogRecordResponse {
@@ -1694,13 +1800,11 @@ impl AdminApi {
     /// Triggers on-demand message log archival and packaging into an ASiC-E archive.
     #[oai(path = "/v1/messagelog/archive", method = "post")]
     async fn archive_logs(&self) -> Json<ArchiveResponse> {
-        let archive_dir = std::env::var("XROAD_ARCHIVE_DIR")
-            .unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
-        let archiver = messagelog::MessageLogArchiver::new(
-            (*self.state.message_log).clone(),
-            archive_dir,
-        )
-        .with_max_records(100);
+        let archive_dir =
+            std::env::var("XROAD_ARCHIVE_DIR").unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
+        let archiver =
+            messagelog::MessageLogArchiver::new((*self.state.message_log).clone(), archive_dir)
+                .with_max_records(100);
 
         match archiver.archive_batch().await {
             Ok(Some(info)) => Json(ArchiveResponse {
@@ -1732,9 +1836,12 @@ impl AdminApi {
 }
 
 pub fn admin_api_app(state: AdminApiState) -> Route {
-    let api_service =
-        OpenApiService::new(AdminApi { state }, "X-Road Security Server Admin API", "0.1.0")
-            .server("/api");
+    let api_service = OpenApiService::new(
+        AdminApi { state },
+        "X-Road Security Server Admin API",
+        "0.1.0",
+    )
+    .server("/api");
     let ui = api_service.swagger_ui();
     Route::new()
         .nest("/api", api_service)

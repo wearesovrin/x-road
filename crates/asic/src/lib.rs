@@ -2,8 +2,8 @@ pub mod container;
 pub mod manifest;
 pub mod xades;
 
-pub use container::{AsicContainer, AsicContainerBuilder, AsicFile, ASIC_MIME_TYPE};
-pub use manifest::{Manifest, ManifestFileEntry, MANIFEST_XMLNS};
+pub use container::{ASIC_MIME_TYPE, AsicContainer, AsicContainerBuilder, AsicFile};
+pub use manifest::{MANIFEST_XMLNS, Manifest, ManifestFileEntry};
 pub use xades::create_xades_bes_signature;
 
 #[cfg(test)]
@@ -46,7 +46,9 @@ mod tests {
             .add_signature(xades_xml.into_bytes())
             .add_timestamp(b"dummy-rfc3161-tsr".to_vec());
 
-        let packed = builder.build().expect("Builder failed to assemble container");
+        let packed = builder
+            .build()
+            .expect("Builder failed to assemble container");
         let unpacked = AsicContainer::unpack(&packed).expect("Unpack failed");
 
         assert_eq!(unpacked.files.len(), 2);

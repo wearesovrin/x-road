@@ -19,7 +19,10 @@ pub struct AcmeConfig {
 }
 
 impl AcmeConfig {
-    pub fn lets_encrypt_staging(contact_email: impl Into<String>, key_purpose: AcmeKeyPurpose) -> Self {
+    pub fn lets_encrypt_staging(
+        contact_email: impl Into<String>,
+        key_purpose: AcmeKeyPurpose,
+    ) -> Self {
         Self {
             directory_url: instant_acme::LetsEncrypt::Staging.url().to_string(),
             contact_email: contact_email.into(),
@@ -30,7 +33,10 @@ impl AcmeConfig {
         }
     }
 
-    pub fn lets_encrypt_production(contact_email: impl Into<String>, key_purpose: AcmeKeyPurpose) -> Self {
+    pub fn lets_encrypt_production(
+        contact_email: impl Into<String>,
+        key_purpose: AcmeKeyPurpose,
+    ) -> Self {
         Self {
             directory_url: instant_acme::LetsEncrypt::Production.url().to_string(),
             contact_email: contact_email.into(),

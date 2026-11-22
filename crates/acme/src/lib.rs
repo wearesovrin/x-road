@@ -59,7 +59,8 @@ mod tests {
 
     #[test]
     fn test_acme_config_builders() {
-        let staging = AcmeConfig::lets_encrypt_staging("admin@example.org", AcmeKeyPurpose::Authentication);
+        let staging =
+            AcmeConfig::lets_encrypt_staging("admin@example.org", AcmeKeyPurpose::Authentication);
         assert!(staging.directory_url.contains("staging"));
         assert_eq!(staging.contact_email, "admin@example.org");
         assert_eq!(staging.key_purpose, AcmeKeyPurpose::Authentication);

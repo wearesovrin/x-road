@@ -161,17 +161,42 @@ mod tests {
         assert_eq!(service_url, Some("http://localhost:8080/user".to_string()));
 
         // 4. Access rights
-        assert!(!db_conf.is_service_allowed(&foreign_client, &service).await.unwrap());
-        db_conf.grant_access(&service, &foreign_client).await.unwrap();
-        assert!(db_conf.is_service_allowed(&foreign_client, &service).await.unwrap());
+        assert!(
+            !db_conf
+                .is_service_allowed(&foreign_client, &service)
+                .await
+                .unwrap()
+        );
+        db_conf
+            .grant_access(&service, &foreign_client)
+            .await
+            .unwrap();
+        assert!(
+            db_conf
+                .is_service_allowed(&foreign_client, &service)
+                .await
+                .unwrap()
+        );
 
         // Revoke access
-        db_conf.revoke_access(&service, &foreign_client).await.unwrap();
-        assert!(!db_conf.is_service_allowed(&foreign_client, &service).await.unwrap());
+        db_conf
+            .revoke_access(&service, &foreign_client)
+            .await
+            .unwrap();
+        assert!(
+            !db_conf
+                .is_service_allowed(&foreign_client, &service)
+                .await
+                .unwrap()
+        );
 
         // 5. API Key validation
         let key_id = db_conf
-            .create_api_key("secret-token-xyz", Some("Test Key"), &["XROAD_SECURITY_OFFICER"])
+            .create_api_key(
+                "secret-token-xyz",
+                Some("Test Key"),
+                &["XROAD_SECURITY_OFFICER"],
+            )
             .await
             .unwrap();
         assert!(!key_id.is_empty());
@@ -184,7 +209,10 @@ mod tests {
 
         // 6. Certificate storage
         let dummy_cert = vec![0x30, 0x82, 0x01, 0x02];
-        db_conf.store_certificate(&client, &dummy_cert).await.unwrap();
+        db_conf
+            .store_certificate(&client, &dummy_cert)
+            .await
+            .unwrap();
         let certs = db_conf.get_certificates(&client).await.unwrap();
         assert_eq!(certs.len(), 1);
         assert_eq!(certs[0], dummy_cert);

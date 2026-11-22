@@ -15,7 +15,11 @@ pub struct ClientId {
     pub member_class: String,
     #[serde(rename = "memberCode", alias = "member_code")]
     pub member_code: String,
-    #[serde(rename = "subsystemCode", alias = "subsystem_code", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "subsystemCode",
+        alias = "subsystem_code",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub subsystem_code: Option<String>,
 }
 

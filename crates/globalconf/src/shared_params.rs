@@ -23,7 +23,11 @@ pub struct SharedParamsXml {
     pub security_servers: Vec<SecurityServerXml>,
     #[serde(rename = "globalGroup", default, skip_serializing_if = "Vec::is_empty")]
     pub global_groups: Vec<GlobalGroupXml>,
-    #[serde(rename = "globalSettings", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "globalSettings",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub global_settings: Option<GlobalSettingsXml>,
 }
 
@@ -34,9 +38,17 @@ pub struct ApprovedCaXml {
     pub authentication_only: bool,
     #[serde(rename = "topCA")]
     pub top_ca: TopCaXml,
-    #[serde(rename = "certificateProfileInfo", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "certificateProfileInfo",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub certificate_profile_info: Option<String>,
-    #[serde(rename = "acmeServer", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "acmeServer",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub acme_server: Option<AcmeServerXml>,
 }
 
@@ -58,7 +70,11 @@ pub struct OcspXml {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AcmeServerXml {
-    #[serde(rename = "directoryURL", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "directoryURL",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub directory_url: Option<String>,
 }
 
@@ -97,7 +113,11 @@ pub struct SubsystemXml {
     pub id: String,
     #[serde(rename = "subsystemCode")]
     pub subsystem_code: String,
-    #[serde(rename = "subsystemName", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "subsystemName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub subsystem_name: Option<String>,
 }
 
@@ -107,7 +127,11 @@ pub struct SecurityServerXml {
     #[serde(rename = "serverCode")]
     pub server_code: String,
     pub address: String,
-    #[serde(rename = "authCertHash", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "authCertHash",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub auth_cert_hashes: Vec<String>,
     #[serde(rename = "client", default, skip_serializing_if = "Vec::is_empty")]
     pub clients: Vec<String>,
@@ -124,7 +148,12 @@ pub struct GlobalGroupXml {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GroupMemberXml {
-    #[serde(rename = "@objectType", alias = "@ns2:objectType", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@objectType",
+        alias = "@ns2:objectType",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub object_type: Option<String>,
     #[serde(rename = "xRoadInstance", alias = "ns2:xRoadInstance")]
     pub xroad_instance: String,
@@ -132,13 +161,22 @@ pub struct GroupMemberXml {
     pub member_class: String,
     #[serde(rename = "memberCode", alias = "ns2:memberCode")]
     pub member_code: String,
-    #[serde(rename = "subsystemCode", alias = "ns2:subsystemCode", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "subsystemCode",
+        alias = "ns2:subsystemCode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub subsystem_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GlobalSettingsXml {
-    #[serde(rename = "ocspFreshnessSeconds", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "ocspFreshnessSeconds",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub ocsp_freshness_seconds: Option<u64>,
 }
 
@@ -213,8 +251,9 @@ pub struct SharedParams {
 impl SharedParams {
     /// Parses a `shared-params.xml` string using `quick-xml`'s serde deserializer.
     pub fn parse_xml(xml: &str) -> XRoadResult<Self> {
-        let dto: SharedParamsXml = quick_xml::de::from_str(xml)
-            .map_err(|e| XRoadError::Configuration(format!("quick-xml serde deserialization error: {e}")))?;
+        let dto: SharedParamsXml = quick_xml::de::from_str(xml).map_err(|e| {
+            XRoadError::Configuration(format!("quick-xml serde deserialization error: {e}"))
+        })?;
 
         let approved_cas = dto
             .approved_cas
@@ -313,9 +352,7 @@ impl SharedParams {
             })
             .collect();
 
-        let ocsp_freshness_seconds = dto
-            .global_settings
-            .and_then(|gs| gs.ocsp_freshness_seconds);
+        let ocsp_freshness_seconds = dto.global_settings.and_then(|gs| gs.ocsp_freshness_seconds);
 
         Ok(SharedParams {
             instance_identifier: dto.instance_identifier,
@@ -407,13 +444,11 @@ impl SharedParams {
                         .members
                         .iter()
                         .map(|m| GroupMemberXml {
-                            object_type: Some(
-                                if m.subsystem_code.is_some() {
-                                    "SUBSYSTEM".to_string()
-                                } else {
-                                    "MEMBER".to_string()
-                                },
-                            ),
+                            object_type: Some(if m.subsystem_code.is_some() {
+                                "SUBSYSTEM".to_string()
+                            } else {
+                                "MEMBER".to_string()
+                            }),
                             xroad_instance: m.xroad_instance.clone(),
                             member_class: m.member_class.clone(),
                             member_code: m.member_code.clone(),
@@ -422,14 +457,13 @@ impl SharedParams {
                         .collect(),
                 })
                 .collect(),
-            global_settings: self
-                .ocsp_freshness_seconds
-                .map(|sec| GlobalSettingsXml {
-                    ocsp_freshness_seconds: Some(sec),
-                }),
+            global_settings: self.ocsp_freshness_seconds.map(|sec| GlobalSettingsXml {
+                ocsp_freshness_seconds: Some(sec),
+            }),
         };
 
-        let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+        let mut out =
+            String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
         let body = quick_xml::se::to_string(&dto).unwrap_or_default();
         out.push_str(&body);
         out
@@ -438,5 +472,7 @@ impl SharedParams {
 
 fn decode_b64(s: &str) -> Vec<u8> {
     let clean = s.replace(['\r', '\n', ' '], "");
-    BASE64_STANDARD.decode(&clean).unwrap_or_else(|_| s.as_bytes().to_vec())
+    BASE64_STANDARD
+        .decode(&clean)
+        .unwrap_or_else(|_| s.as_bytes().to_vec())
 }

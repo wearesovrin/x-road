@@ -2,11 +2,8 @@ use common::headers;
 use message::{SoapEnvelopeXml, XRoadHeaders};
 use messagelog::{MessageLogDb, NewLogRecord};
 use poem::{
-    EndpointExt, Request, Response, Route, handler,
-    http::StatusCode,
-    listener::TcpListener,
-    web::Data,
-    Server,
+    EndpointExt, Request, Response, Route, Server, handler, http::StatusCode,
+    listener::TcpListener, web::Data,
 };
 use serverconf::ServerConfProvider;
 use sha2::{Digest, Sha256};
@@ -19,18 +16,22 @@ pub struct ServerProxyState {
     pub server_conf: Arc<dyn ServerConfProvider>,
     pub message_log: Arc<MessageLogDb>,
     pub http_client: reqwest::Client,
+    pub signer_client: Option<Arc<signer::SignerClient>>,
 }
 
 impl ServerProxyState {
-    pub fn new(
-        server_conf: Arc<dyn ServerConfProvider>,
-        message_log: Arc<MessageLogDb>,
-    ) -> Self {
+    pub fn new(server_conf: Arc<dyn ServerConfProvider>, message_log: Arc<MessageLogDb>) -> Self {
         Self {
             server_conf,
             message_log,
             http_client: reqwest::Client::new(),
+            signer_client: None,
         }
+    }
+
+    pub fn with_signer_client(mut self, signer_client: Arc<signer::SignerClient>) -> Self {
+        self.signer_client = Some(signer_client);
+        self
     }
 }
 
@@ -290,7 +291,11 @@ pub async fn handle_server_request(
     }
 
     // 2. Resolve internal backend URL for this service
-    let service_url = match state.server_conf.get_service_url(&parsed_headers.service).await {
+    let service_url = match state
+        .server_conf
+        .get_service_url(&parsed_headers.service)
+        .await
+    {
         Ok(Some(url)) => url,
         Ok(None) => {
             if is_xml {
@@ -348,7 +353,11 @@ pub async fn handle_server_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
+            discriminator: if is_xml {
+                "SOAP".to_string()
+            } else {
+                "REST".to_string()
+            },
             message_hash,
             signature_hash: None,
             message_body: String::from_utf8(body_bytes.to_vec()).ok(),
@@ -358,7 +367,9 @@ pub async fn handle_server_request(
         .await;
 
     // 4. Forward to internal backend service
-    let mut backend_req = state.http_client.request(req.method().clone(), &service_url);
+    let mut backend_req = state
+        .http_client
+        .request(req.method().clone(), &service_url);
     if let Some(ct) = req.content_type() {
         backend_req = backend_req.header("content-type", ct);
     }
@@ -402,7 +413,11 @@ pub async fn handle_server_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
+            discriminator: if is_xml {
+                "SOAP".to_string()
+            } else {
+                "REST".to_string()
+            },
             message_hash: resp_hash,
             signature_hash: None,
             message_body: String::from_utf8(resp_bytes.to_vec()).ok(),

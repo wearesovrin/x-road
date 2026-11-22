@@ -145,10 +145,7 @@ mod tests {
         assert_eq!(svc3.subsystem_code(), Some("billing"));
         assert_eq!(svc3.service_code(), "getInvoices");
         assert_eq!(svc3.service_version(), Some("v2"));
-        assert_eq!(
-            svc3.to_string(),
-            "EE/COM/12345678/billing/getInvoices/v2"
-        );
+        assert_eq!(svc3.to_string(), "EE/COM/12345678/billing/getInvoices/v2");
     }
 
     #[test]
@@ -203,7 +200,15 @@ mod tests {
 
     #[test]
     fn test_xml_service_identifier_roundtrip() {
-        let svc = ServiceId::from_parts("EE", "BUSINESS", "JODA", None::<&str>, "getState", Some("v1")).unwrap();
+        let svc = ServiceId::from_parts(
+            "EE",
+            "BUSINESS",
+            "JODA",
+            None::<&str>,
+            "getState",
+            Some("v1"),
+        )
+        .unwrap();
         let xml_repr = XRoadServiceIdentifierType::from(&svc);
         let xml_str = xml_repr.to_xml("service");
 

@@ -1,11 +1,11 @@
-use crate::admin_api::{admin_api_app, AdminApiState};
+use crate::admin_api::{AdminApiState, admin_api_app};
 use crate::config::SecurityServerConfig;
 use common::XRoadResult;
 use globalconf::GlobalConf;
 use messagelog::MessageLogDb;
 use poem::listener::TcpListener;
 use poem::{Route, Server};
-use proxy::{client_proxy_app, server_proxy_app, ClientProxyState, ServerProxyState};
+use proxy::{ClientProxyState, ServerProxyState, client_proxy_app, server_proxy_app};
 use serverconf::DatabaseServerConf;
 use signer::SignerServiceImpl;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ pub struct SecurityServerNode {
     pub message_log: Arc<MessageLogDb>,
     pub global_conf: Arc<GlobalConf>,
     pub signer: Arc<SignerServiceImpl>,
+    pub signer_client: Arc<signer::SignerClient>,
 }
 
 impl SecurityServerNode {
@@ -28,12 +29,15 @@ impl SecurityServerNode {
         message_log: MessageLogDb,
         global_conf: GlobalConf,
     ) -> Self {
+        let signer_service = Arc::new(SignerServiceImpl::new());
+        let signer_client = Arc::new(signer::SignerClient::in_memory(signer_service.clone()));
         Self {
             config,
             server_conf: Arc::new(server_conf),
             message_log: Arc::new(message_log),
             global_conf: Arc::new(global_conf),
-            signer: Arc::new(SignerServiceImpl::new()),
+            signer: signer_service,
+            signer_client,
         }
     }
 
@@ -67,7 +71,9 @@ impl SecurityServerNode {
             self.server_conf.clone(),
             self.message_log.clone(),
             self.global_conf.clone(),
-        );
+        )
+        .with_signer_client(self.signer_client.clone());
+
         if let Some(ref def) = self.config.default_server_proxy_url {
             state = state.with_default_server_proxy(def);
         }
@@ -76,10 +82,9 @@ impl SecurityServerNode {
 
     /// Constructs the Poem Route for the Server Proxy (incoming provider gateway).
     pub fn server_proxy_app(&self) -> Route {
-        let state = ServerProxyState::new(
-            self.server_conf.clone(),
-            self.message_log.clone(),
-        );
+        let state = ServerProxyState::new(self.server_conf.clone(), self.message_log.clone())
+            .with_signer_client(self.signer_client.clone());
+
         server_proxy_app(state)
     }
 
@@ -112,9 +117,21 @@ impl SecurityServerNode {
         let server_proxy_server = Server::new(server_listener).run(self.server_proxy_app());
 
         tokio::try_join!(
-            async { admin_server.await.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>) },
-            async { client_server.await.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>) },
-            async { server_proxy_server.await.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>) }
+            async {
+                admin_server
+                    .await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            },
+            async {
+                client_server
+                    .await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            },
+            async {
+                server_proxy_server
+                    .await
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            }
         )?;
 
         Ok(())

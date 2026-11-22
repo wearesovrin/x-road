@@ -19,7 +19,12 @@ pub struct XRoadClientIdentifierType {
     pub member_class: String,
     #[serde(rename = "id:memberCode", alias = "memberCode")]
     pub member_code: String,
-    #[serde(rename = "id:subsystemCode", alias = "subsystemCode", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "id:subsystemCode",
+        alias = "subsystemCode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub subsystem_code: Option<String>,
 }
 
@@ -118,11 +123,21 @@ pub struct XRoadServiceIdentifierType {
     pub member_class: String,
     #[serde(rename = "id:memberCode", alias = "memberCode")]
     pub member_code: String,
-    #[serde(rename = "id:subsystemCode", alias = "subsystemCode", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "id:subsystemCode",
+        alias = "subsystemCode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub subsystem_code: Option<String>,
     #[serde(rename = "id:serviceCode", alias = "serviceCode")]
     pub service_code: String,
-    #[serde(rename = "id:serviceVersion", alias = "serviceVersion", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "id:serviceVersion",
+        alias = "serviceVersion",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub service_version: Option<String>,
 }
 
@@ -256,9 +271,10 @@ impl XRoadSecurityServerIdentifierType {
 
     /// Parses an X-Road security server identifier from an XML string using quick-xml serde.
     pub fn parse_xml(xml: &str) -> XRoadResult<SecurityServerId> {
-        let parsed: XRoadSecurityServerIdentifierType = quick_xml::de::from_str(xml).map_err(|e| {
-            XRoadError::IdentifierParse(format!("Failed to parse SecurityServerId XML: {}", e))
-        })?;
+        let parsed: XRoadSecurityServerIdentifierType =
+            quick_xml::de::from_str(xml).map_err(|e| {
+                XRoadError::IdentifierParse(format!("Failed to parse SecurityServerId XML: {}", e))
+            })?;
         SecurityServerId::try_from(parsed)
     }
 }

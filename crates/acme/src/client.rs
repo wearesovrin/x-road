@@ -51,7 +51,11 @@ impl XRoadAcmeClient {
             .map_err(|e| XRoadError::Certificate(format!("Failed to build ACME account: {}", e)))?;
 
         builder
-            .create(&new_account, self.config.directory_url.clone(), eab.as_ref())
+            .create(
+                &new_account,
+                self.config.directory_url.clone(),
+                eab.as_ref(),
+            )
             .await
             .map_err(|e| XRoadError::Certificate(format!("ACME account creation failed: {}", e)))
     }
@@ -61,10 +65,9 @@ impl XRoadAcmeClient {
         let builder = Account::builder()
             .map_err(|e| XRoadError::Certificate(format!("Failed to build ACME account: {}", e)))?;
 
-        builder
-            .from_credentials(credentials)
-            .await
-            .map_err(|e| XRoadError::Certificate(format!("Failed to load account from credentials: {}", e)))
+        builder.from_credentials(credentials).await.map_err(|e| {
+            XRoadError::Certificate(format!("Failed to load account from credentials: {}", e))
+        })
     }
 
     /// Places an ACME order for the given domain and SANs, fulfills HTTP-01 challenges,
@@ -98,8 +101,9 @@ impl XRoadAcmeClient {
         // Fulfill challenges
         let mut authorizations = order.authorizations();
         while let Some(auth_result) = authorizations.next().await {
-            let mut auth = auth_result
-                .map_err(|e| XRoadError::Certificate(format!("Authorization fetch error: {}", e)))?;
+            let mut auth = auth_result.map_err(|e| {
+                XRoadError::Certificate(format!("Authorization fetch error: {}", e))
+            })?;
 
             if let Some(mut challenge) = auth.challenge(ChallengeType::Http01) {
                 let key_auth = challenge.key_authorization();
@@ -109,10 +113,9 @@ impl XRoadAcmeClient {
                 self.challenge_store.insert(&token, key_auth.as_str());
 
                 // Notify ACME server that the challenge is ready
-                challenge
-                    .set_ready()
-                    .await
-                    .map_err(|e| XRoadError::Certificate(format!("Failed to set challenge ready: {}", e)))?;
+                challenge.set_ready().await.map_err(|e| {
+                    XRoadError::Certificate(format!("Failed to set challenge ready: {}", e))
+                })?;
             } else {
                 warn!("No HTTP-01 challenge found for authorization");
             }
@@ -148,19 +151,16 @@ impl XRoadAcmeClient {
 
         // Finalize order with raw CSR DER bytes from Security Server / Signer
         info!("Finalizing ACME order with raw CSR");
-        order
-            .finalize_csr(csr_der)
-            .await
-            .map_err(|e| XRoadError::Certificate(format!("Failed to finalize CSR on ACME order: {}", e)))?;
+        order.finalize_csr(csr_der).await.map_err(|e| {
+            XRoadError::Certificate(format!("Failed to finalize CSR on ACME order: {}", e))
+        })?;
 
         // Download certificate chain
         let mut cert_attempts = 0;
         loop {
-            if let Some(cert_pem) = order
-                .certificate()
-                .await
-                .map_err(|e| XRoadError::Certificate(format!("Failed to download certificate: {}", e)))?
-            {
+            if let Some(cert_pem) = order.certificate().await.map_err(|e| {
+                XRoadError::Certificate(format!("Failed to download certificate: {}", e))
+            })? {
                 info!("Successfully obtained certificate chain from ACME provider");
                 return Ok(cert_pem);
             }

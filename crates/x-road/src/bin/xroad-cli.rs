@@ -1,7 +1,6 @@
 use asic::AsicContainer;
 use clap::{Parser, Subcommand};
 use identifiers::ClientId;
-use signer::SignerServiceImpl;
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -62,7 +61,11 @@ pub enum Commands {
 pub enum MessageLogAction {
     /// Archive pending unarchived message logs into ASiC-E archive zip
     Archive {
-        #[arg(short, long, default_value = "sqlite:////var/lib/xroad/messagelog.db?mode=rwc")]
+        #[arg(
+            short,
+            long,
+            default_value = "sqlite:////var/lib/xroad/messagelog.db?mode=rwc"
+        )]
         db: String,
         #[arg(short, long, default_value = "/var/lib/xroad/archive")]
         dir: String,
@@ -210,23 +213,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 println!("Software token keys ready.");
             }
             KeyAction::Generate { token_id, label } => {
-                let signer = SignerServiceImpl::new();
+                let signer = signer::SignerClient::new_in_memory();
                 let key_info = signer
-                    .generate_software_key(
-                        &token_id,
-                        &label,
-                        proto::KeyUsageInfo::Signing,
-                    )
+                    .generate_key(&token_id, &label, proto::KeyUsageInfo::Signing)
                     .await?;
                 println!("Successfully generated key: {}", key_info.id);
                 println!("Algorithm: {}", key_info.sign_mechanism_name);
                 println!("Public Key:\n{}", key_info.public_key);
             }
             KeyAction::Csr { key_id, subject } => {
-                let signer = SignerServiceImpl::new();
+                let signer = signer::SignerClient::new_in_memory();
                 // Generate a temporary key for CSR demonstration if not pre-existing
                 let key = signer
-                    .generate_software_key("soft-token-0", &key_id, proto::KeyUsageInfo::Signing)
+                    .generate_key("soft-token-0", &key_id, proto::KeyUsageInfo::Signing)
                     .await?;
                 let csr = signer.generate_csr(&key.id, &subject).await?;
                 println!("Generated PKCS#10 CSR for Subject: {}\n{}", subject, csr);
@@ -299,12 +298,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let client = reqwest::Client::new();
             match action {
                 SecurityServerAction::Status { endpoint } => {
-                    let resp = client.get(format!("{endpoint}/api/v1/status")).send().await?;
+                    let resp = client
+                        .get(format!("{endpoint}/api/v1/status"))
+                        .send()
+                        .await?;
                     let status: serde_json::Value = resp.json().await?;
                     println!("{}", serde_json::to_string_pretty(&status)?);
                 }
                 SecurityServerAction::ListClients { endpoint } => {
-                    let resp = client.get(format!("{endpoint}/api/v1/clients")).send().await?;
+                    let resp = client
+                        .get(format!("{endpoint}/api/v1/clients"))
+                        .send()
+                        .await?;
                     let clients: serde_json::Value = resp.json().await?;
                     println!("{}", serde_json::to_string_pretty(&clients)?);
                 }
@@ -331,12 +336,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let client = reqwest::Client::new();
             match action {
                 CentralServerAction::Status { endpoint } => {
-                    let resp = client.get(format!("{endpoint}/api/v1/status")).send().await?;
+                    let resp = client
+                        .get(format!("{endpoint}/api/v1/status"))
+                        .send()
+                        .await?;
                     let status: serde_json::Value = resp.json().await?;
                     println!("{}", serde_json::to_string_pretty(&status)?);
                 }
                 CentralServerAction::ListMembers { endpoint } => {
-                    let resp = client.get(format!("{endpoint}/api/v1/members")).send().await?;
+                    let resp = client
+                        .get(format!("{endpoint}/api/v1/members"))
+                        .send()
+                        .await?;
                     let members: serde_json::Value = resp.json().await?;
                     println!("{}", serde_json::to_string_pretty(&members)?);
                 }

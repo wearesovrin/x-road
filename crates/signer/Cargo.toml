@@ -16,5 +16,6 @@ sha2.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 tracing.workspace = true
+identifiers.workspace = true
 thiserror.workspace = true
 serde.workspace = true

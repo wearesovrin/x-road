@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 proto.workspace = true
+prost-types.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 tracing.workspace = true

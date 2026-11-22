@@ -86,14 +86,23 @@ impl GlobalConf {
 
         // 1. Process members & subsystems
         for m in &params.members {
-            let member_client = ClientId::member_unchecked(instance, &m.member_class, &m.member_code);
+            let member_client =
+                ClientId::member_unchecked(instance, &m.member_class, &m.member_code);
             members.insert(member_client.clone(), m.name.clone());
             id_to_client.insert(m.id.clone(), member_client.clone());
             client_to_member_id.insert(m.id.clone(), member_client.clone());
 
             for sub in &m.subsystems {
-                let sub_client = ClientId::subsystem_unchecked(instance, &m.member_class, &m.member_code, &sub.subsystem_code);
-                let sub_name = sub.subsystem_name.clone().unwrap_or_else(|| format!("{}/{}", m.name, sub.subsystem_code));
+                let sub_client = ClientId::subsystem_unchecked(
+                    instance,
+                    &m.member_class,
+                    &m.member_code,
+                    &sub.subsystem_code,
+                );
+                let sub_name = sub
+                    .subsystem_name
+                    .clone()
+                    .unwrap_or_else(|| format!("{}/{}", m.name, sub.subsystem_code));
                 members.insert(sub_client.clone(), sub_name);
                 id_to_client.insert(sub.id.clone(), sub_client);
             }
@@ -121,40 +130,50 @@ impl GlobalConf {
                     }
                 }
 
-                sec_server_details.insert(server_id, SecurityServerInfo {
-                    address: ss.address.clone(),
-                    auth_cert_hashes: ss.auth_cert_hashes.clone(),
-                    clients: client_set,
-                });
+                sec_server_details.insert(
+                    server_id,
+                    SecurityServerInfo {
+                        address: ss.address.clone(),
+                        auth_cert_hashes: ss.auth_cert_hashes.clone(),
+                        clients: client_set,
+                    },
+                );
             }
         }
 
         // 3. Approved CAs & TSAs
-        let approved_cas: Vec<ApprovedCa> = params.approved_cas.iter().map(|ca| {
-            ApprovedCa {
+        let approved_cas: Vec<ApprovedCa> = params
+            .approved_cas
+            .iter()
+            .map(|ca| ApprovedCa {
                 name: ca.name.clone(),
                 top_ca_cert: ca.top_ca_cert.clone(),
                 intermediate_ca_certs: vec![],
                 ocsp_response_freshness: params.ocsp_freshness_seconds.unwrap_or(3600),
-            }
-        }).collect();
+            })
+            .collect();
 
-        let approved_tsps: Vec<ApprovedTsp> = params.approved_tsas.iter().map(|tsa| {
-            ApprovedTsp {
+        let approved_tsps: Vec<ApprovedTsp> = params
+            .approved_tsas
+            .iter()
+            .map(|tsa| ApprovedTsp {
                 name: tsa.name.clone(),
                 url: tsa.url.clone(),
                 cert: tsa.cert.clone(),
-            }
-        }).collect();
+            })
+            .collect();
 
         // 4. Global Groups
         let mut global_groups = HashMap::new();
         for g in &params.global_groups {
             let members_set: HashSet<ClientId> = g.members.iter().cloned().collect();
-            global_groups.insert(g.group_code.clone(), GlobalGroupInfo {
-                description: g.description.clone(),
-                members: members_set,
-            });
+            global_groups.insert(
+                g.group_code.clone(),
+                GlobalGroupInfo {
+                    description: g.description.clone(),
+                    members: members_set,
+                },
+            );
         }
 
         GlobalConf {
@@ -181,17 +200,28 @@ impl GlobalConf {
     }
 
     /// Registers a Security Server address in the configuration.
-    pub fn register_security_server(&mut self, server_id: SecurityServerId, address: impl Into<String>) {
+    pub fn register_security_server(
+        &mut self,
+        server_id: SecurityServerId,
+        address: impl Into<String>,
+    ) {
         self.security_servers.insert(server_id, address.into());
     }
 
     /// Links a client to a Security Server in the configuration.
-    pub fn link_client_to_security_server(&mut self, client_id: ClientId, server_id: SecurityServerId) {
+    pub fn link_client_to_security_server(
+        &mut self,
+        client_id: ClientId,
+        server_id: SecurityServerId,
+    ) {
         self.client_to_server.insert(client_id, server_id);
     }
 
     /// Resolves which Security Server hosts the given client.
-    pub fn get_security_server_for_client(&self, client_id: &ClientId) -> Option<&SecurityServerId> {
+    pub fn get_security_server_for_client(
+        &self,
+        client_id: &ClientId,
+    ) -> Option<&SecurityServerId> {
         if let Some(ss_id) = self.client_to_server.get(client_id) {
             return Some(ss_id);
         }
@@ -294,7 +324,8 @@ mod tests {
     </globalSettings>
 </ns3:conf>"#;
 
-        let conf = GlobalConf::from_shared_params_xml(xml).expect("Failed to parse shared-params.xml");
+        let conf =
+            GlobalConf::from_shared_params_xml(xml).expect("Failed to parse shared-params.xml");
         assert_eq!(conf.instance_identifier, "DEV");
         assert_eq!(conf.ocsp_freshness_seconds, 1800);
 
@@ -306,11 +337,20 @@ mod tests {
 
         // Verify security server lookup
         let sec_server_id = SecurityServerId::new("DEV", "COM", "1234", "SS1").unwrap();
-        assert_eq!(conf.get_security_server_address(&sec_server_id), Some(&"ss1.acme.com:8443".to_string()));
+        assert_eq!(
+            conf.get_security_server_address(&sec_server_id),
+            Some(&"ss1.acme.com:8443".to_string())
+        );
 
         // Client to security server lookup
-        assert_eq!(conf.get_security_server_for_client(&sub_id), Some(&sec_server_id));
-        assert_eq!(conf.get_security_server_address_for_client(&sub_id), Some(&"ss1.acme.com:8443".to_string()));
+        assert_eq!(
+            conf.get_security_server_for_client(&sub_id),
+            Some(&sec_server_id)
+        );
+        assert_eq!(
+            conf.get_security_server_address_for_client(&sub_id),
+            Some(&"ss1.acme.com:8443".to_string())
+        );
 
         // CA & TSA
         assert_eq!(conf.approved_cas.len(), 1);

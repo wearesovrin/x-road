@@ -92,8 +92,7 @@ impl MessageLogArchiver {
 
         // Ensure archive directory exists
         if !self.archive_dir.exists() {
-            fs::create_dir_all(&self.archive_dir)
-                .map_err(|e| XRoadError::Io(e))?;
+            fs::create_dir_all(&self.archive_dir).map_err(|e| XRoadError::Io(e))?;
         }
 
         let mut archive_buffer = Vec::new();
@@ -118,8 +117,18 @@ impl MessageLogArchiver {
             let mut builder = AsicContainerBuilder::new();
 
             let (msg_filename, mime_type) = if record.discriminator == "REST"
-                || record.message_body.as_deref().unwrap_or("").trim_start().starts_with('{')
-                || record.message_body.as_deref().unwrap_or("").trim_start().starts_with('[')
+                || record
+                    .message_body
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim_start()
+                    .starts_with('{')
+                || record
+                    .message_body
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim_start()
+                    .starts_with('[')
             {
                 ("message.json", "application/json")
             } else {
@@ -145,10 +154,21 @@ impl MessageLogArchiver {
             let clean_query_id: String = record
                 .query_id
                 .chars()
-                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
-            let record_type = if record.response { "response" } else { "request" };
-            let container_filename = format!("{clean_query_id}-{record_type}-{:x}.asice", record.id);
+            let record_type = if record.response {
+                "response"
+            } else {
+                "request"
+            };
+            let container_filename =
+                format!("{clean_query_id}-{record_type}-{:x}.asice", record.id);
 
             // Chain digest
             current_digest = chain_digest(&current_digest, &container_bytes);
@@ -254,7 +274,11 @@ pub fn verify_archive(
     }
 
     if let Some(expected_prev) = prev_digest_override {
-        let normalized_expected = if expected_prev == "-" { "" } else { expected_prev };
+        let normalized_expected = if expected_prev == "-" {
+            ""
+        } else {
+            expected_prev
+        };
         if prev_digest != normalized_expected {
             return Err(XRoadError::Asic(format!(
                 "Previous digest mismatch: archive specified '{prev_digest}', caller expected '{normalized_expected}'"
@@ -370,7 +394,10 @@ mod tests {
             .await
             .expect("add attachment");
 
-        let temp_dir = std::env::temp_dir().join(format!("xroad-test-archive-{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "xroad-test-archive-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
         let archiver = MessageLogArchiver::new(db.clone(), &temp_dir);
 
         // Run batch archive

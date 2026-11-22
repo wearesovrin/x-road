@@ -1,5 +1,5 @@
 use crate::XRoadHeaders;
-use common::{XRoadError, XRoadResult, XROAD_PROTOCOL_VERSION};
+use common::{XROAD_PROTOCOL_VERSION, XRoadError, XRoadResult};
 use identifiers::{ClientId, ServiceId, XRoadClientIdentifierType, XRoadServiceIdentifierType};
 use serde::{Deserialize, Serialize};
 
@@ -16,13 +16,28 @@ pub struct SoapHeaderXml {
     pub service: XRoadServiceIdentifierType,
     #[serde(rename = "xroad:id", alias = "id")]
     pub id: String,
-    #[serde(rename = "xroad:userId", alias = "userId", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "xroad:userId",
+        alias = "userId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub user_id: Option<String>,
-    #[serde(rename = "xroad:issue", alias = "issue", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "xroad:issue",
+        alias = "issue",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub issue: Option<String>,
     #[serde(rename = "xroad:protocolVersion", alias = "protocolVersion")]
     pub protocol_version: String,
-    #[serde(rename = "xroad:representedParty", alias = "representedParty", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "xroad:representedParty",
+        alias = "representedParty",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub represented_party: Option<String>,
 }
 
@@ -57,7 +72,12 @@ impl SoapHeaderXml {
 /// SOAP Fault Detail element.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SoapFaultDetailXml {
-    #[serde(rename = "xroad:faultDetail", alias = "faultDetail", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "xroad:faultDetail",
+        alias = "faultDetail",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub fault_detail: Option<String>,
 }
 
@@ -68,7 +88,11 @@ pub struct SoapFaultXml {
     pub fault_code: String,
     #[serde(rename = "faultstring")]
     pub fault_string: String,
-    #[serde(rename = "faultactor", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "faultactor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub fault_actor: Option<String>,
     #[serde(rename = "detail", default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<SoapFaultDetailXml>,
@@ -77,7 +101,12 @@ pub struct SoapFaultXml {
 /// Generic SOAP Body container.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SoapBodyXml {
-    #[serde(rename = "SOAP-ENV:Fault", alias = "Fault", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "SOAP-ENV:Fault",
+        alias = "Fault",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub fault: Option<SoapFaultXml>,
 }
 
@@ -85,9 +114,17 @@ pub struct SoapBodyXml {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename = "Envelope")]
 pub struct SoapEnvelopeXml {
-    #[serde(rename = "@xmlns:SOAP-ENV", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@xmlns:SOAP-ENV",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub xmlns_soap_env: Option<String>,
-    #[serde(rename = "@xmlns:xroad", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@xmlns:xroad",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub xmlns_xroad: Option<String>,
     #[serde(rename = "@xmlns:id", default, skip_serializing_if = "Option::is_none")]
     pub xmlns_id: Option<String>,
@@ -107,7 +144,12 @@ impl SoapEnvelopeXml {
     }
 
     /// Creates a new SOAP response envelope.
-    pub fn new_response(client: ClientId, service: ServiceId, query_id: String, payload: Option<String>) -> Self {
+    pub fn new_response(
+        client: ClientId,
+        service: ServiceId,
+        query_id: String,
+        payload: Option<String>,
+    ) -> Self {
         let mut headers = XRoadHeaders::new(client, service);
         headers.id = query_id;
         Self::from_xroad_headers(&headers, payload)
@@ -133,7 +175,8 @@ impl SoapEnvelopeXml {
         fault_detail: Option<&str>,
     ) -> Self {
         let default_client = ClientId::member("XX", "COM", "UNKNOWN").unwrap();
-        let default_service = ServiceId::new(default_client.clone(), "unknown", None::<&str>).unwrap();
+        let default_service =
+            ServiceId::new(default_client.clone(), "unknown", None::<&str>).unwrap();
         let header = match headers {
             Some(h) => SoapHeaderXml::from_xroad_headers(h),
             None => SoapHeaderXml {
@@ -178,12 +221,23 @@ impl SoapEnvelopeXml {
         }
         if let Some(p) = &self.payload {
             if body.contains("<SOAP-ENV:Body/>") {
-                body = body.replacen("<SOAP-ENV:Body/>", &format!("<SOAP-ENV:Body>{}</SOAP-ENV:Body>", p), 1);
+                body = body.replacen(
+                    "<SOAP-ENV:Body/>",
+                    &format!("<SOAP-ENV:Body>{}</SOAP-ENV:Body>", p),
+                    1,
+                );
             } else if body.contains("<SOAP-ENV:Body></SOAP-ENV:Body>") {
-                body = body.replacen("<SOAP-ENV:Body></SOAP-ENV:Body>", &format!("<SOAP-ENV:Body>{}</SOAP-ENV:Body>", p), 1);
+                body = body.replacen(
+                    "<SOAP-ENV:Body></SOAP-ENV:Body>",
+                    &format!("<SOAP-ENV:Body>{}</SOAP-ENV:Body>", p),
+                    1,
+                );
             }
         }
-        Ok(format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n{}", body))
+        Ok(format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n{}",
+            body
+        ))
     }
 
     /// Parses a SOAP envelope from an XML string using quick-xml serde.
@@ -211,8 +265,20 @@ mod tests {
     #[test]
     fn test_soap_envelope_serde_roundtrip() {
         let client = ClientId::member("EE", "BUSINESS", "consumer").unwrap();
-        let service = ServiceId::from_parts("EE", "BUSINESS", "producer", None::<&str>, "testQuery", None::<&str>).unwrap();
-        let envelope = SoapEnvelopeXml::new_request(client.clone(), service.clone(), Some("<testQuery><name>foo</name></testQuery>".to_string()));
+        let service = ServiceId::from_parts(
+            "EE",
+            "BUSINESS",
+            "producer",
+            None::<&str>,
+            "testQuery",
+            None::<&str>,
+        )
+        .unwrap();
+        let envelope = SoapEnvelopeXml::new_request(
+            client.clone(),
+            service.clone(),
+            Some("<testQuery><name>foo</name></testQuery>".to_string()),
+        );
 
         let xml = envelope.to_xml().expect("Should serialize SOAP XML");
         assert!(xml.contains("SOAP-ENV:Envelope"));
@@ -244,7 +310,10 @@ mod tests {
         let f = parsed.body.fault.unwrap();
         assert_eq!(f.fault_code, "SOAP-ENV:Server");
         assert_eq!(f.fault_string, "Server.ServerProxy.ServiceNotFound");
-        assert_eq!(f.detail.unwrap().fault_detail.unwrap(), "Service not found in local service database");
+        assert_eq!(
+            f.detail.unwrap().fault_detail.unwrap(),
+            "Service not found in local service database"
+        );
     }
 
     #[test]

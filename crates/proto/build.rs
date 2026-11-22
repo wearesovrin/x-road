@@ -11,6 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/globalconf_service.proto",
         "proto/anchor_service.proto",
         "proto/monitor_service.proto",
+        "proto/admin_service.proto",
+        "proto/opmonitor_service.proto",
     ];
 
     tonic_prost_build::configure().compile_protos(&protos, &["proto"])?;

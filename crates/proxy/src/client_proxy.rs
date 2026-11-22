@@ -4,11 +4,8 @@ use identifiers::{ClientId, ServiceId};
 use message::{SoapEnvelopeXml, XRoadHeaders};
 use messagelog::{MessageLogDb, NewLogRecord};
 use poem::{
-    EndpointExt, Request, Response, Route, handler,
-    http::StatusCode,
-    listener::TcpListener,
-    web::Data,
-    Server,
+    EndpointExt, Request, Response, Route, Server, handler, http::StatusCode,
+    listener::TcpListener, web::Data,
 };
 use serverconf::ServerConfProvider;
 use sha2::{Digest, Sha256};
@@ -23,6 +20,7 @@ pub struct ClientProxyState {
     pub global_conf: Arc<GlobalConf>,
     pub http_client: reqwest::Client,
     pub default_server_proxy_url: Option<String>,
+    pub signer_client: Option<Arc<signer::SignerClient>>,
 }
 
 impl ClientProxyState {
@@ -37,6 +35,7 @@ impl ClientProxyState {
             global_conf,
             http_client: reqwest::Client::new(),
             default_server_proxy_url: None,
+            signer_client: None,
         }
     }
 
@@ -44,11 +43,21 @@ impl ClientProxyState {
         self.default_server_proxy_url = Some(url.into());
         self
     }
+
+    pub fn with_signer_client(mut self, signer_client: Arc<signer::SignerClient>) -> Self {
+        self.signer_client = Some(signer_client);
+        self
+    }
 }
 
 /// Parses X-Road headers from REST gateway path format `/r1/{instance}/{class}/{code}/{subsystem}/{service}`
-fn parse_headers_from_rest_path(path: &str, header_map: &HashMap<String, String>) -> Option<XRoadHeaders> {
-    let trimmed = path.strip_prefix("/r1/").or_else(|| path.strip_prefix("r1/"))?;
+fn parse_headers_from_rest_path(
+    path: &str,
+    header_map: &HashMap<String, String>,
+) -> Option<XRoadHeaders> {
+    let trimmed = path
+        .strip_prefix("/r1/")
+        .or_else(|| path.strip_prefix("r1/"))?;
     let parts: Vec<&str> = trimmed.split('/').filter(|s| !s.is_empty()).collect();
 
     // We expect: [instance, class, code, (subsystem), service, (version)]
@@ -253,7 +262,11 @@ pub async fn handle_client_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
+            discriminator: if is_xml {
+                "SOAP".to_string()
+            } else {
+                "REST".to_string()
+            },
             message_hash,
             signature_hash: None,
             message_body: String::from_utf8(body_bytes.to_vec()).ok(),
@@ -265,7 +278,10 @@ pub async fn handle_client_request(
     // 3. Resolve destination Server Proxy URL
     let target_url = if let Some(direct) = header_map.get("x-road-server-proxy-url") {
         direct.clone()
-    } else if let Some(addr) = state.global_conf.get_security_server_address_for_client(&parsed_headers.service.client) {
+    } else if let Some(addr) = state
+        .global_conf
+        .get_security_server_address_for_client(&parsed_headers.service.client)
+    {
         if addr.starts_with("http://") || addr.starts_with("https://") {
             addr.clone()
         } else {
@@ -322,7 +338,11 @@ pub async fn handle_client_request(
             x_request_id: header_map.get("x-request-id").cloned(),
             client_id_str: Some(parsed_headers.client.to_string()),
             service_id_str: Some(parsed_headers.service.to_string()),
-            discriminator: if is_xml { "SOAP".to_string() } else { "REST".to_string() },
+            discriminator: if is_xml {
+                "SOAP".to_string()
+            } else {
+                "REST".to_string()
+            },
             message_hash: resp_hash,
             signature_hash: None,
             message_body: String::from_utf8(resp_bytes.to_vec()).ok(),

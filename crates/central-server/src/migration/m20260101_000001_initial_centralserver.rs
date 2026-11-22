@@ -11,6 +11,9 @@ impl MigrationTrait for Migration {
         let schema = Schema::new(builder);
 
         manager
+            .create_table(schema.create_table_from_entity(crate::entities::member_class::Entity))
+            .await?;
+        manager
             .create_table(schema.create_table_from_entity(crate::entities::member::Entity))
             .await?;
         manager
@@ -20,13 +23,22 @@ impl MigrationTrait for Migration {
             .create_table(schema.create_table_from_entity(crate::entities::security_server::Entity))
             .await?;
         manager
-            .create_table(schema.create_table_from_entity(crate::entities::security_server_client::Entity))
+            .create_table(
+                schema.create_table_from_entity(crate::entities::security_server_client::Entity),
+            )
+            .await?;
+        manager
+            .create_table(
+                schema.create_table_from_entity(crate::entities::security_server_auth_cert::Entity),
+            )
             .await?;
         manager
             .create_table(schema.create_table_from_entity(crate::entities::global_group::Entity))
             .await?;
         manager
-            .create_table(schema.create_table_from_entity(crate::entities::global_group_member::Entity))
+            .create_table(
+                schema.create_table_from_entity(crate::entities::global_group_member::Entity),
+            )
             .await?;
         manager
             .create_table(schema.create_table_from_entity(crate::entities::approved_ca::Entity))
@@ -34,34 +46,104 @@ impl MigrationTrait for Migration {
         manager
             .create_table(schema.create_table_from_entity(crate::entities::approved_tsa::Entity))
             .await?;
+        manager
+            .create_table(
+                schema.create_table_from_entity(crate::entities::management_request::Entity),
+            )
+            .await?;
+        manager
+            .create_table(
+                schema.create_table_from_entity(crate::entities::system_parameter::Entity),
+            )
+            .await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(crate::entities::approved_tsa::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::system_parameter::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::approved_ca::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::management_request::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::global_group_member::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::approved_tsa::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::global_group::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::approved_ca::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::security_server_client::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::global_group_member::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::security_server::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::global_group::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::subsystem::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::security_server_auth_cert::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::member::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::security_server_client::Entity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::security_server::Entity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::subsystem::Entity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::member::Entity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::member_class::Entity)
+                    .to_owned(),
+            )
             .await?;
 
         Ok(())

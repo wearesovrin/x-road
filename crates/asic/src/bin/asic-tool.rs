@@ -50,10 +50,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("ASiC-e Container inspection:");
             println!("- Payload files: {}", container.files.len());
             for f in &container.files {
-                println!("  * {} ({} bytes, mime: {})", f.name, f.content.len(), f.mime_type);
+                println!(
+                    "  * {} ({} bytes, mime: {})",
+                    f.name,
+                    f.content.len(),
+                    f.mime_type
+                );
             }
             println!("- Signatures: {}", container.signatures.len());
-            println!("- Timestamp present: {}", container.timestamp_data.is_some());
+            println!(
+                "- Timestamp present: {}",
+                container.timestamp_data.is_some()
+            );
             println!("- Manifest valid: {}", container.verify_integrity().is_ok());
         }
     }

@@ -17,7 +17,9 @@ impl MigrationTrait for Migration {
             .create_table(schema.create_table_from_entity(crate::entities::certificate::Entity))
             .await?;
         manager
-            .create_table(schema.create_table_from_entity(crate::entities::service_description::Entity))
+            .create_table(
+                schema.create_table_from_entity(crate::entities::service_description::Entity),
+            )
             .await?;
         manager
             .create_table(schema.create_table_from_entity(crate::entities::service::Entity))
@@ -46,34 +48,74 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(crate::entities::group_member::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::group_member::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::local_group::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::local_group::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::api_key_role::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::api_key_role::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::api_key::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::api_key::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::access_right::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::access_right::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::endpoint::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::endpoint::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::service::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::service::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::service_description::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::service_description::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::certificate::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::certificate::Entity)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(crate::entities::client::Entity).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::client::Entity)
+                    .to_owned(),
+            )
             .await?;
 
         Ok(())

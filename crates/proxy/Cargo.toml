@@ -13,6 +13,7 @@ message.workspace = true
 globalconf.workspace = true
 serverconf.workspace = true
 messagelog.workspace = true
+signer.workspace = true
 tokio.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true

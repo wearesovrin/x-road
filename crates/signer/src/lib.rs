@@ -1,10 +1,16 @@
+pub mod client;
+pub use client::SignerClient;
+
 use common::{XRoadError, XRoadResult};
+use proto::certificate_service_server::{CertificateService, CertificateServiceServer};
 use proto::key_service_server::{KeyService, KeyServiceServer};
+use proto::ocsp_service_server::{OcspService, OcspServiceServer};
 use proto::sign_service_server::{SignService, SignServiceServer};
+use proto::token_service_server::{TokenService, TokenServiceServer};
 use proto::*;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ECDSA_P256_SHA256};
 use ring::rand::SystemRandom;
-use ring::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
+use ring::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -43,6 +49,7 @@ pub struct SoftwareKeyEntry {
 pub struct SignerServiceImpl {
     keys: Arc<RwLock<HashMap<String, SoftwareKeyEntry>>>,
     tokens: Arc<RwLock<HashMap<String, TokenStatus>>>,
+    ocsp_cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl Default for SignerServiceImpl {
@@ -62,6 +69,7 @@ impl Default for SignerServiceImpl {
         Self {
             keys: Arc::new(RwLock::new(HashMap::new())),
             tokens: Arc::new(RwLock::new(tokens_map)),
+            ocsp_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -77,6 +85,20 @@ impl SignerServiceImpl {
 
     pub fn into_sign_service(self: Arc<Self>) -> SignServiceServer<SignerSignServiceAdapter> {
         SignServiceServer::new(SignerSignServiceAdapter { inner: self })
+    }
+
+    pub fn into_token_service(self: Arc<Self>) -> TokenServiceServer<SignerTokenServiceAdapter> {
+        TokenServiceServer::new(SignerTokenServiceAdapter { inner: self })
+    }
+
+    pub fn into_certificate_service(
+        self: Arc<Self>,
+    ) -> CertificateServiceServer<SignerCertificateServiceAdapter> {
+        CertificateServiceServer::new(SignerCertificateServiceAdapter { inner: self })
+    }
+
+    pub fn into_ocsp_service(self: Arc<Self>) -> OcspServiceServer<SignerOcspServiceAdapter> {
+        OcspServiceServer::new(SignerOcspServiceAdapter { inner: self })
     }
 
     /// Internal key generation using ECDSA P-256.
@@ -125,11 +147,7 @@ impl SignerServiceImpl {
     }
 
     /// Generates a PKCS#10 Certificate Signing Request (CSR) for a managed key.
-    pub async fn generate_csr(
-        &self,
-        key_id: &str,
-        subject_cn: &str,
-    ) -> XRoadResult<String> {
+    pub async fn generate_csr(&self, key_id: &str, subject_cn: &str) -> XRoadResult<String> {
         let keys_guard = self.keys.read().await;
         let entry = keys_guard
             .get(key_id)
@@ -289,8 +307,9 @@ impl SignerServiceImpl {
             .ok_or_else(|| XRoadError::Crypto(format!("Key not found: {key_id}")))?;
 
         let rng = SystemRandom::new();
-        let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &entry.key_der, &rng)
-            .map_err(|e| XRoadError::Crypto(format!("Failed to load ring ECDSA key: {e}")))?;
+        let key_pair =
+            EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &entry.key_der, &rng)
+                .map_err(|e| XRoadError::Crypto(format!("Failed to load ring ECDSA key: {e}")))?;
 
         let signature = key_pair
             .sign(&rng, digest)
@@ -300,11 +319,7 @@ impl SignerServiceImpl {
     }
 
     /// Stores a certificate associated with a key ID.
-    pub async fn add_certificate(
-        &self,
-        key_id: &str,
-        cert_bytes: Vec<u8>,
-    ) -> XRoadResult<()> {
+    pub async fn add_certificate(&self, key_id: &str, cert_bytes: Vec<u8>) -> XRoadResult<()> {
         let mut keys_guard = self.keys.write().await;
         let entry = keys_guard
             .get_mut(key_id)
@@ -497,6 +512,519 @@ impl SignService for SignerSignServiceAdapter {
     }
 }
 
+pub struct SignerTokenServiceAdapter {
+    inner: Arc<SignerServiceImpl>,
+}
+
+#[tonic::async_trait]
+impl TokenService for SignerTokenServiceAdapter {
+    async fn get_token_by_id(
+        &self,
+        req: Request<GetTokenByIdReq>,
+    ) -> Result<Response<TokenInfoProto>, Status> {
+        let r = req.into_inner();
+        let tokens = self.inner.tokens.read().await;
+        let token = tokens
+            .get(&r.token_id)
+            .ok_or_else(|| Status::not_found(format!("Token not found: {}", r.token_id)))?;
+
+        let keys = self.inner.keys.read().await;
+        let key_list: Vec<KeyInfoProto> = keys
+            .values()
+            .filter(|k| k.token_id == token.id)
+            .map(|k| KeyInfoProto {
+                id: k.id.clone(),
+                friendly_name: k.friendly_name.clone(),
+                usage: k.usage,
+                available: true,
+                label: k.label.clone(),
+                public_key: k.public_key_pem.clone(),
+                certs: k.certs.clone(),
+                cert_requests: k.cert_requests.clone(),
+                sign_mechanism_name: k.sign_mechanism.clone(),
+            })
+            .collect();
+
+        Ok(Response::new(TokenInfoProto {
+            r#type: token.token_type.clone(),
+            friendly_name: Some(token.name.clone()),
+            id: token.id.clone(),
+            read_only: false,
+            available: true,
+            active: token.logged_in,
+            serial_number: None,
+            label: Some(token.name.clone()),
+            status: TokenStatusInfo::Ok as i32,
+            key_info: key_list,
+            token_info: HashMap::new(),
+        }))
+    }
+
+    async fn get_token_by_key(
+        &self,
+        req: Request<GetTokenByKeyIdReq>,
+    ) -> Result<Response<TokenInfoProto>, Status> {
+        let r = req.into_inner();
+        let keys = self.inner.keys.read().await;
+        let key = keys
+            .get(&r.key_id)
+            .ok_or_else(|| Status::not_found(format!("Key not found: {}", r.key_id)))?;
+        let token_id = key.token_id.clone();
+        drop(keys);
+
+        self.get_token_by_id(Request::new(GetTokenByIdReq { token_id }))
+            .await
+    }
+
+    async fn get_token_and_key_id_by_cert_request_id(
+        &self,
+        req: Request<GetTokenByCertRequestIdReq>,
+    ) -> Result<Response<TokenInfoAndKeyIdProto>, Status> {
+        let r = req.into_inner();
+        let keys = self.inner.keys.read().await;
+        for key in keys.values() {
+            if key
+                .cert_requests
+                .iter()
+                .any(|cr| cr.id == r.cert_request_id)
+            {
+                let key_id = key.id.clone();
+                let token_id = key.token_id.clone();
+                drop(keys);
+                let token_resp = self
+                    .get_token_by_id(Request::new(GetTokenByIdReq { token_id }))
+                    .await?;
+                return Ok(Response::new(TokenInfoAndKeyIdProto {
+                    key_id,
+                    token_info: Some(token_resp.into_inner()),
+                }));
+            }
+        }
+        Err(Status::not_found("Certificate request ID not found"))
+    }
+
+    async fn get_token_and_key_id_by_cert_hash(
+        &self,
+        req: Request<GetTokenByCertHashReq>,
+    ) -> Result<Response<TokenInfoAndKeyIdProto>, Status> {
+        let r = req.into_inner();
+        let target_hash = r.cert_hash.to_lowercase();
+        let keys = self.inner.keys.read().await;
+        for key in keys.values() {
+            for cert in &key.certs {
+                let mut hasher = Sha256::new();
+                hasher.update(&cert.certificate_bytes);
+                let hash_hex = format!("{:x}", hasher.finalize());
+                if hash_hex == target_hash {
+                    let key_id = key.id.clone();
+                    let token_id = key.token_id.clone();
+                    drop(keys);
+                    let token_resp = self
+                        .get_token_by_id(Request::new(GetTokenByIdReq { token_id }))
+                        .await?;
+                    return Ok(Response::new(TokenInfoAndKeyIdProto {
+                        key_id,
+                        token_info: Some(token_resp.into_inner()),
+                    }));
+                }
+            }
+        }
+        Err(Status::not_found("Certificate hash not found"))
+    }
+
+    async fn list_tokens(&self, _req: Request<Empty>) -> Result<Response<ListTokensResp>, Status> {
+        let tokens_guard = self.inner.tokens.read().await;
+        let keys_guard = self.inner.keys.read().await;
+
+        let mut token_list = Vec::new();
+        for token in tokens_guard.values() {
+            let key_list: Vec<KeyInfoProto> = keys_guard
+                .values()
+                .filter(|k| k.token_id == token.id)
+                .map(|k| KeyInfoProto {
+                    id: k.id.clone(),
+                    friendly_name: k.friendly_name.clone(),
+                    usage: k.usage,
+                    available: true,
+                    label: k.label.clone(),
+                    public_key: k.public_key_pem.clone(),
+                    certs: k.certs.clone(),
+                    cert_requests: k.cert_requests.clone(),
+                    sign_mechanism_name: k.sign_mechanism.clone(),
+                })
+                .collect();
+
+            token_list.push(TokenInfoProto {
+                r#type: token.token_type.clone(),
+                friendly_name: Some(token.name.clone()),
+                id: token.id.clone(),
+                read_only: false,
+                available: true,
+                active: token.logged_in,
+                serial_number: None,
+                label: Some(token.name.clone()),
+                status: TokenStatusInfo::Ok as i32,
+                key_info: key_list,
+                token_info: HashMap::new(),
+            });
+        }
+
+        Ok(Response::new(ListTokensResp { tokens: token_list }))
+    }
+
+    async fn activate_token(
+        &self,
+        req: Request<ActivateTokenReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut tokens = self.inner.tokens.write().await;
+        if let Some(t) = tokens.get_mut(&r.token_id) {
+            t.logged_in = r.activate;
+            Ok(Response::new(Empty {}))
+        } else {
+            Err(Status::not_found("Token not found"))
+        }
+    }
+
+    async fn set_token_friendly_name(
+        &self,
+        req: Request<SetTokenFriendlyNameReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut tokens = self.inner.tokens.write().await;
+        if let Some(t) = tokens.get_mut(&r.token_id) {
+            t.name = r.friendly_name;
+            Ok(Response::new(Empty {}))
+        } else {
+            Err(Status::not_found("Token not found"))
+        }
+    }
+
+    async fn get_token_batch_signing_enabled(
+        &self,
+        _req: Request<GetTokenBatchSigningEnabledReq>,
+    ) -> Result<Response<GetTokenBatchSigningEnabledResp>, Status> {
+        Ok(Response::new(GetTokenBatchSigningEnabledResp {
+            batching_signing_enabled: true,
+        }))
+    }
+
+    async fn init_software_token(
+        &self,
+        req: Request<InitSoftwareTokenReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut tokens = self.inner.tokens.write().await;
+        if let Some(t) = tokens.get_mut("0") {
+            t.pin = Some(String::from_utf8_lossy(&r.pin).to_string());
+            t.has_pin = true;
+            t.logged_in = true;
+        }
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn update_software_token_pin(
+        &self,
+        req: Request<UpdateSoftwareTokenPinReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut tokens = self.inner.tokens.write().await;
+        if let Some(t) = tokens.get_mut("0") {
+            t.pin = Some(String::from_utf8_lossy(&r.new_pin).to_string());
+        }
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn delete_token(&self, req: Request<DeleteTokenReq>) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut tokens = self.inner.tokens.write().await;
+        tokens.remove(&r.token_id);
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn get_hsm_operational_info(
+        &self,
+        _req: Request<Empty>,
+    ) -> Result<Response<GetHsmOperationalInfoResp>, Status> {
+        Ok(Response::new(GetHsmOperationalInfoResp {
+            operational: true,
+        }))
+    }
+
+    async fn get_member_signing_info(
+        &self,
+        _req: Request<GetMemberSigningInfoReq>,
+    ) -> Result<Response<GetMemberSigningInfoResp>, Status> {
+        let keys = self.inner.keys.read().await;
+        for key in keys.values() {
+            if key.usage == KeyUsageInfo::Signing as i32 {
+                return Ok(Response::new(GetMemberSigningInfoResp {
+                    key_id: key.id.clone(),
+                    cert: key.certs.first().cloned(),
+                    sign_mechanism_name: key.sign_mechanism.clone(),
+                }));
+            }
+        }
+        Ok(Response::new(GetMemberSigningInfoResp {
+            key_id: String::new(),
+            cert: None,
+            sign_mechanism_name: String::new(),
+        }))
+    }
+}
+
+pub struct SignerCertificateServiceAdapter {
+    inner: Arc<SignerServiceImpl>,
+}
+
+#[tonic::async_trait]
+impl CertificateService for SignerCertificateServiceAdapter {
+    async fn activate_cert(
+        &self,
+        req: Request<ActivateCertReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            if let Some(c) = key.certs.iter_mut().find(|c| c.id == r.cert_id_or_hash) {
+                c.active = r.active;
+                return Ok(Response::new(Empty {}));
+            }
+        }
+        Err(Status::not_found("Certificate ID not found"))
+    }
+
+    async fn get_certificate_info_for_hash(
+        &self,
+        req: Request<GetCertificateInfoForHashReq>,
+    ) -> Result<Response<GetCertificateInfoResp>, Status> {
+        let r = req.into_inner();
+        let target_hash = r.cert_hash.to_lowercase();
+        let keys = self.inner.keys.read().await;
+        for key in keys.values() {
+            for cert in &key.certs {
+                let mut hasher = Sha256::new();
+                hasher.update(&cert.certificate_bytes);
+                let hash_hex = format!("{:x}", hasher.finalize());
+                if hash_hex == target_hash {
+                    return Ok(Response::new(GetCertificateInfoResp {
+                        certificate_info: Some(cert.clone()),
+                    }));
+                }
+            }
+        }
+        Err(Status::not_found("Certificate not found for hash"))
+    }
+
+    async fn get_member_certs(
+        &self,
+        _req: Request<GetMemberCertsReq>,
+    ) -> Result<Response<GetMemberCertsResp>, Status> {
+        let keys = self.inner.keys.read().await;
+        let mut certs = Vec::new();
+        for key in keys.values() {
+            certs.extend(key.certs.clone());
+        }
+        Ok(Response::new(GetMemberCertsResp { certs }))
+    }
+
+    async fn set_cert_status(
+        &self,
+        req: Request<SetCertStatusReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            if let Some(c) = key.certs.iter_mut().find(|c| c.id == r.cert_id) {
+                c.status = r.status;
+                return Ok(Response::new(Empty {}));
+            }
+        }
+        Err(Status::not_found("Certificate ID not found"))
+    }
+
+    async fn set_renewed_cert_hash(
+        &self,
+        req: Request<SetRenewedCertHashReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            if let Some(c) = key.certs.iter_mut().find(|c| c.id == r.cert_id) {
+                c.renewed_cert_hash = Some(r.hash);
+                return Ok(Response::new(Empty {}));
+            }
+        }
+        Err(Status::not_found("Certificate ID not found"))
+    }
+
+    async fn set_renewal_error(
+        &self,
+        req: Request<SetRenewalErrorReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            if let Some(c) = key.certs.iter_mut().find(|c| c.id == r.cert_id) {
+                c.renewal_error = Some(r.error_message);
+                return Ok(Response::new(Empty {}));
+            }
+        }
+        Err(Status::not_found("Certificate ID not found"))
+    }
+
+    async fn set_next_planned_renewal(
+        &self,
+        _req: Request<SetNextPlannedRenewalReq>,
+    ) -> Result<Response<Empty>, Status> {
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn generate_cert_request(
+        &self,
+        req: Request<GenerateCertRequestReq>,
+    ) -> Result<Response<GenerateCertRequestResp>, Status> {
+        let r = req.into_inner();
+        let csr_pem = self
+            .inner
+            .generate_csr(&r.key_id, &r.subject_name)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GenerateCertRequestResp {
+            cert_req_id: format!("csr-{}", uuid::Uuid::new_v4()),
+            cert_request: csr_pem.into_bytes(),
+            format: 0,
+        }))
+    }
+
+    async fn regenerate_cert_request(
+        &self,
+        req: Request<RegenerateCertRequestReq>,
+    ) -> Result<Response<RegenerateCertRequestResp>, Status> {
+        let r = req.into_inner();
+        let (key_id, subject) = {
+            let keys = self.inner.keys.read().await;
+            keys.values().find_map(|k| {
+                k.cert_requests
+                    .iter()
+                    .find(|cr| cr.id == r.cert_request_id)
+                    .map(|cr| (k.id.clone(), cr.subject_name.clone()))
+            })
+        }
+        .unwrap_or_else(|| ("soft-token-0".to_string(), "CN=SecurityServer".to_string()));
+
+        let csr_pem = self
+            .inner
+            .generate_csr(&key_id, &subject)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RegenerateCertRequestResp {
+            cert_req_id: r.cert_request_id,
+            cert_request: csr_pem.into_bytes(),
+            format: r.format,
+            member_id: None,
+            key_usage: 0,
+        }))
+    }
+
+    async fn delete_cert(&self, req: Request<DeleteCertReq>) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            key.certs.retain(|c| c.id != r.cert_id);
+        }
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn delete_cert_request(
+        &self,
+        req: Request<DeleteCertRequestReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut keys = self.inner.keys.write().await;
+        for key in keys.values_mut() {
+            key.cert_requests.retain(|c| c.id != r.cert_request_id);
+        }
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn import_cert(
+        &self,
+        req: Request<ImportCertReq>,
+    ) -> Result<Response<ImportCertResp>, Status> {
+        let r = req.into_inner();
+        let key_id = {
+            let keys = self.inner.keys.read().await;
+            keys.keys()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "soft-token-0".to_string())
+        };
+        self.inner
+            .add_certificate(&key_id, r.cert_data)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(ImportCertResp { key_id }))
+    }
+
+    async fn generate_self_signed_cert(
+        &self,
+        _req: Request<GenerateSelfSignedCertReq>,
+    ) -> Result<Response<GenerateSelfSignedCertResp>, Status> {
+        Ok(Response::new(GenerateSelfSignedCertResp {
+            certificate_bytes: vec![0x30, 0x82, 0x01, 0x02],
+        }))
+    }
+}
+
+pub struct SignerOcspServiceAdapter {
+    inner: Arc<SignerServiceImpl>,
+}
+
+#[tonic::async_trait]
+impl OcspService for SignerOcspServiceAdapter {
+    async fn set_ocsp_responses(
+        &self,
+        req: Request<SetOcspResponsesReq>,
+    ) -> Result<Response<Empty>, Status> {
+        let r = req.into_inner();
+        let mut cache = self.inner.ocsp_cache.write().await;
+        for (hash, resp) in r.cert_hashes.into_iter().zip(r.base64_encoded_responses) {
+            cache.insert(hash.to_lowercase(), resp);
+        }
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn get_ocsp_responses(
+        &self,
+        req: Request<GetOcspResponsesReq>,
+    ) -> Result<Response<GetOcspResponsesResp>, Status> {
+        let r = req.into_inner();
+        let cache = self.inner.ocsp_cache.read().await;
+        let mut responses = HashMap::new();
+        for hash in r.cert_hash {
+            if let Some(resp) = cache.get(&hash.to_lowercase()) {
+                responses.insert(hash, resp.clone());
+            }
+        }
+        Ok(Response::new(GetOcspResponsesResp {
+            base64_encoded_responses: responses,
+        }))
+    }
+
+    async fn get_ocsp_prioritization_strategy(
+        &self,
+        _req: Request<Empty>,
+    ) -> Result<Response<OcspPrioritizationStrategyResp>, Status> {
+        Ok(Response::new(OcspPrioritizationStrategyResp {
+            strategy: 0,
+        }))
+    }
+}
+
 /// Launches the Signer gRPC service on the given address.
 pub async fn run_signer(bind_addr: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("Starting X-Road Signer Daemon on {}...", bind_addr);
@@ -505,7 +1033,10 @@ pub async fn run_signer(bind_addr: &str) -> Result<(), Box<dyn std::error::Error
 
     tonic::transport::Server::builder()
         .add_service(signer.clone().into_key_service())
-        .add_service(signer.into_sign_service())
+        .add_service(signer.clone().into_sign_service())
+        .add_service(signer.clone().into_token_service())
+        .add_service(signer.clone().into_certificate_service())
+        .add_service(signer.into_ocsp_service())
         .serve(addr)
         .await?;
     Ok(())
@@ -521,7 +1052,11 @@ mod tests {
 
         // 1. Generate key
         let key_info = signer
-            .generate_software_key("soft-token-0", "test-auth-key", KeyUsageInfo::Authentication)
+            .generate_software_key(
+                "soft-token-0",
+                "test-auth-key",
+                KeyUsageInfo::Authentication,
+            )
             .await
             .expect("Failed to generate key");
 
@@ -558,5 +1093,54 @@ mod tests {
             .await
             .expect("Failed to generate CSR");
         assert!(csr.contains("BEGIN CERTIFICATE REQUEST"));
+    }
+
+    #[tokio::test]
+    async fn test_signer_client_in_memory() {
+        let client = SignerClient::new_in_memory();
+
+        // 1. Generate key
+        let key = client
+            .generate_key("0", "signing-key-1", KeyUsageInfo::Signing)
+            .await
+            .expect("Failed to generate key via SignerClient");
+        assert_eq!(key.label.as_deref(), Some("signing-key-1"));
+
+        // 2. Sign digest
+        let digest = sha2::Sha256::digest(b"hello x-road");
+        let sig = client
+            .sign(&key.id, &digest)
+            .await
+            .expect("Failed to sign via SignerClient");
+        assert!(!sig.is_empty());
+
+        // 3. Generate CSR
+        let csr = client
+            .generate_csr(&key.id, "DEV/COM/12345678/SUBSYS")
+            .await
+            .expect("Failed to generate CSR via SignerClient");
+        assert!(csr.contains("BEGIN CERTIFICATE REQUEST"));
+
+        // 4. Token & OCSP operations
+        let tokens = client.list_tokens().await.unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].id, "0");
+
+        client
+            .set_ocsp_responses(
+                vec!["abc123hash".to_string()],
+                vec!["fake-ocsp-response-b64".to_string()],
+            )
+            .await
+            .unwrap();
+
+        let ocsp_map = client
+            .get_ocsp_responses(&["abc123hash".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(
+            ocsp_map.get("abc123hash"),
+            Some(&"fake-ocsp-response-b64".to_string())
+        );
     }
 }

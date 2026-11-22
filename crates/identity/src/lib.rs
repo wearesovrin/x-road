@@ -212,12 +212,17 @@ mod tests {
         );
 
         resolver.register_did_document(doc.clone()).await;
-        resolver.bind_client_to_did(client.clone(), "did:sov:123456789abcdef").await;
+        resolver
+            .bind_client_to_did(client.clone(), "did:sov:123456789abcdef")
+            .await;
 
         let resolved_did = resolver.get_did_for_client(&client).await.unwrap();
         assert_eq!(resolved_did, Some("did:sov:123456789abcdef".to_string()));
 
-        let resolved_doc = resolver.resolve_did("did:sov:123456789abcdef").await.unwrap();
+        let resolved_doc = resolver
+            .resolve_did("did:sov:123456789abcdef")
+            .await
+            .unwrap();
         assert_eq!(resolved_doc, Some(doc));
     }
 
@@ -226,7 +231,10 @@ mod tests {
         let vc = VerifiableCredential {
             context: vec!["https://www.w3.org/2018/credentials/v1".to_string()],
             id: "urn:uuid:abc-123".to_string(),
-            credential_type: vec!["VerifiableCredential".to_string(), "DataspaceParticipantCredential".to_string()],
+            credential_type: vec![
+                "VerifiableCredential".to_string(),
+                "DataspaceParticipantCredential".to_string(),
+            ],
             issuer: "did:xroad:DEV:GOV:AUTHORITY".to_string(),
             issuance_date: "2026-01-01T00:00:00Z".to_string(),
             expiration_date: Some("2030-01-01T00:00:00Z".to_string()),

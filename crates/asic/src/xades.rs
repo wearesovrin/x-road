@@ -17,7 +17,11 @@ pub const SIGNED_PROPERTIES_TYPE: &str = "http://uri.etsi.org/01903#SignedProper
 pub struct XadesSignatureXml {
     #[serde(rename = "@xmlns:ds", default, skip_serializing_if = "Option::is_none")]
     pub xmlns_ds: Option<String>,
-    #[serde(rename = "@xmlns:xades", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@xmlns:xades",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub xmlns_xades: Option<String>,
     #[serde(rename = "@Id", alias = "@id")]
     pub id: String,
@@ -49,7 +53,12 @@ pub struct AlgorithmXml {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReferenceXml {
-    #[serde(rename = "@Type", alias = "@type", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@Type",
+        alias = "@type",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub reference_type: Option<String>,
     #[serde(rename = "@URI", alias = "@uri")]
     pub uri: String,
@@ -89,7 +98,10 @@ pub struct QualifyingPropertiesXml {
 pub struct SignedPropertiesXml {
     #[serde(rename = "@Id", alias = "@id")]
     pub id: String,
-    #[serde(rename = "xades:SignedSignatureProperties", alias = "SignedSignatureProperties")]
+    #[serde(
+        rename = "xades:SignedSignatureProperties",
+        alias = "SignedSignatureProperties"
+    )]
     pub signed_signature_properties: SignedSignaturePropertiesXml,
 }
 
@@ -211,7 +223,9 @@ pub fn create_xades_bes_signature(
 /// Parses an XAdES-BES signature XML into typed DTO using quick-xml serde.
 pub fn parse_xades_bes_signature(xml: &str) -> XRoadResult<XadesSignatureXml> {
     quick_xml::de::from_str(xml).map_err(|e| {
-        XRoadError::Asic(format!("Failed to parse XAdES signature XML with quick-xml: {e}"))
+        XRoadError::Asic(format!(
+            "Failed to parse XAdES signature XML with quick-xml: {e}"
+        ))
     })
 }
 

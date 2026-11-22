@@ -105,7 +105,10 @@ impl MessageLogDb {
     /// Marks the given log records as archived.
     pub async fn mark_archived(&self, ids: &[i64]) -> XRoadResult<()> {
         log_record::Entity::update_many()
-            .col_expr(log_record::Column::Archived, sea_orm::sea_query::Expr::val(true))
+            .col_expr(
+                log_record::Column::Archived,
+                sea_orm::sea_query::Expr::val(true),
+            )
             .filter(log_record::Column::Id.is_in(ids.to_vec()))
             .exec(self.raw_connection())
             .await

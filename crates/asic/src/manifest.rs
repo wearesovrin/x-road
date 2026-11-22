@@ -67,8 +67,11 @@ impl Manifest {
         };
 
         let mut buffer = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        let xml_str = quick_xml::se::to_string(&dto)
-            .map_err(|e| XRoadError::Asic(format!("Failed to serialize manifest XML with quick-xml: {e}")))?;
+        let xml_str = quick_xml::se::to_string(&dto).map_err(|e| {
+            XRoadError::Asic(format!(
+                "Failed to serialize manifest XML with quick-xml: {e}"
+            ))
+        })?;
         buffer.push_str(&xml_str);
         buffer.push('\n');
         Ok(buffer)
@@ -76,8 +79,11 @@ impl Manifest {
 
     /// Deserializes manifest from XML using `quick-xml` serde.
     pub fn from_xml(xml: &str) -> XRoadResult<Self> {
-        let dto: ManifestXml = quick_xml::de::from_str(xml)
-            .map_err(|e| XRoadError::Asic(format!("Failed to deserialize manifest XML with quick-xml: {e}")))?;
+        let dto: ManifestXml = quick_xml::de::from_str(xml).map_err(|e| {
+            XRoadError::Asic(format!(
+                "Failed to deserialize manifest XML with quick-xml: {e}"
+            ))
+        })?;
 
         let entries = dto
             .entries

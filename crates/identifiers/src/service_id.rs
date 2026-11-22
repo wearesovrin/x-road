@@ -13,7 +13,11 @@ pub struct ServiceId {
     pub client: ClientId,
     #[serde(rename = "serviceCode", alias = "service_code")]
     pub service_code: String,
-    #[serde(rename = "serviceVersion", alias = "service_version", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "serviceVersion",
+        alias = "service_version",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub service_version: Option<String>,
 }
 

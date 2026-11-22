@@ -1,4 +1,4 @@
-use central_server::{central_server_app, CentralServerDb};
+use central_server::{CentralServerDb, central_server_app};
 use confclient::ConfClient;
 use globalconf::ConfigurationAnchor;
 use identifiers::ClientId;
@@ -14,7 +14,13 @@ async fn test_confclient_sync_e2e() {
         .expect("Failed to create in-memory CentralServerDb");
 
     let member = db
-        .add_member("DEV", "COM", "12345678", "E2E Test Member", Some("admin@test.ee"))
+        .add_member(
+            "DEV",
+            "COM",
+            "12345678",
+            "E2E Test Member",
+            Some("admin@test.ee"),
+        )
         .await
         .unwrap();
 
@@ -43,9 +49,15 @@ async fn test_confclient_sync_e2e() {
     // 2. Launch Central Server on ephemeral port
     let app = central_server_app("DEV".to_string(), db);
     let listener = poem::listener::TcpListener::bind("127.0.0.1:0");
-    let acceptor = listener.into_acceptor().await.expect("Failed to bind ephemeral listener");
+    let acceptor = listener
+        .into_acceptor()
+        .await
+        .expect("Failed to bind ephemeral listener");
     let addrs = acceptor.local_addr();
-    let port = addrs[0].as_socket_addr().expect("Failed to get socket addr").port();
+    let port = addrs[0]
+        .as_socket_addr()
+        .expect("Failed to get socket addr")
+        .port();
 
     tokio::spawn(async move {
         let server = Server::new_with_acceptor(acceptor);
@@ -61,9 +73,9 @@ async fn test_confclient_sync_e2e() {
     let anchor = ConfigurationAnchor {
         instance_identifier: "DEV".to_string(),
         generated_at: chrono::Utc::now(),
-        download_urls: vec![
-            format!("http://127.0.0.1:{port}/internalconf/shared-params.xml"),
-        ],
+        download_urls: vec![format!(
+            "http://127.0.0.1:{port}/internalconf/shared-params.xml"
+        )],
         verification_cert_hashes: vec![],
     };
 
@@ -93,6 +105,9 @@ async fn test_confclient_sync_e2e() {
     assert_eq!(conf.approved_tsps[0].url, "http://tsa.test.ee:8899");
 
     // 6. Verify client.get_global_conf() returns cached conf
-    let cached = client.get_global_conf().await.expect("Expected cached globalconf");
+    let cached = client
+        .get_global_conf()
+        .await
+        .expect("Expected cached globalconf");
     assert_eq!(cached.instance_identifier, "DEV");
 }

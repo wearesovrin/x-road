@@ -10,8 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check & Compile
+  ci:
+    name: Continuous Integration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,48 +19,17 @@ jobs:
 
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Cargo Check
-        run: cargo check --workspace --all-targets
-
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Workspace Tests
-        run: cargo test --workspace --all-targets --doc
-
-  fmt:
-    name: Code Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Verify Formatting
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Formatting
         run: cargo fmt --all -- --check
+
+      - name: Run Tests
+        run: cargo test --workspace --all-targets && cargo test --workspace --doc

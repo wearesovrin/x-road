@@ -1,9 +1,10 @@
 use identifiers::{ClientId, ServiceId};
 use poem::{
-    handler, http::StatusCode, listener::TcpListener, post, web::Json as PoemJson, Response, Route, Server,
+    Response, Route, Server, handler, http::StatusCode, listener::TcpListener, post,
+    web::Json as PoemJson,
 };
 use security_server::{SecurityServerConfig, SecurityServerNode};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use serverconf::ServiceType;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
@@ -78,17 +79,23 @@ async fn test_security_server_e2e_flow() {
         admin_bind: admin_bind.clone(),
         client_proxy_bind: client_proxy_bind.clone(),
         server_proxy_bind: server_proxy_bind.clone(),
-        database_url: None, // in-memory SQLite
-        messagelog_database_url: None, // in-memory SQLite
+        database_url: None,             // in-memory SQLite
+        messagelog_database_url: None,  // in-memory SQLite
         default_server_proxy_url: None, // tests dynamic GlobalConf resolution!
     };
 
     let mut global_conf = globalconf::GlobalConf::new("DEV");
-    let sec_server_id = identifiers::SecurityServerId::new("DEV", "COM", "12345678", "SS-TEST-NODE").unwrap();
-    global_conf.register_security_server(sec_server_id.clone(), format!("127.0.0.1:{server_proxy_port}"));
+    let sec_server_id =
+        identifiers::SecurityServerId::new("DEV", "COM", "12345678", "SS-TEST-NODE").unwrap();
+    global_conf.register_security_server(
+        sec_server_id.clone(),
+        format!("127.0.0.1:{server_proxy_port}"),
+    );
     global_conf.link_client_to_security_server(provider.clone(), sec_server_id);
 
-    let server_conf = serverconf::DatabaseServerConf::connect_in_memory().await.unwrap();
+    let server_conf = serverconf::DatabaseServerConf::connect_in_memory()
+        .await
+        .unwrap();
     let message_log = messagelog::MessageLogDb::connect_in_memory().await.unwrap();
     let node = SecurityServerNode::new(config, server_conf, message_log, global_conf);
 
@@ -109,7 +116,10 @@ async fn test_security_server_e2e_flow() {
         .unwrap();
 
     let service = ServiceId::new(provider.clone(), "getUserProfile", Some("v1")).unwrap();
-    node.server_conf.grant_access(&service, &consumer).await.unwrap();
+    node.server_conf
+        .grant_access(&service, &consumer)
+        .await
+        .unwrap();
 
     let soap_backend_url = format!("http://127.0.0.1:{backend_port}/soap/user-service");
     node.server_conf
@@ -124,7 +134,10 @@ async fn test_security_server_e2e_flow() {
         .unwrap();
 
     let soap_service = ServiceId::new(provider.clone(), "getSoapUser", None::<&str>).unwrap();
-    node.server_conf.grant_access(&soap_service, &consumer).await.unwrap();
+    node.server_conf
+        .grant_access(&soap_service, &consumer)
+        .await
+        .unwrap();
 
     // 4. Launch Security Server Node in background
     let node_clone = node.clone();
@@ -163,7 +176,10 @@ async fn test_security_server_e2e_flow() {
         .to_string();
     assert!(!x_road_id.is_empty());
 
-    let resp_body: Value = resp.json().await.expect("Failed to deserialize JSON response");
+    let resp_body: Value = resp
+        .json()
+        .await
+        .expect("Failed to deserialize JSON response");
     assert_eq!(resp_body["userId"], 1001);
     assert_eq!(resp_body["displayName"], "X-Road Test User");
     assert_eq!(resp_body["status"], "ACTIVE");
@@ -183,7 +199,8 @@ async fn test_security_server_e2e_flow() {
     // -------------------------------------------------------------------------
     // E2E Test 2: REST Gateway Path Convention (`/r1/{instance}/{class}/{code}/{subsystem}/{service}`)
     // -------------------------------------------------------------------------
-    let rest_gateway_url = format!("http://{client_proxy_bind}/r1/DEV/COM/12345678/PROVIDER/getUserProfile");
+    let rest_gateway_url =
+        format!("http://{client_proxy_bind}/r1/DEV/COM/12345678/PROVIDER/getUserProfile");
     let resp2 = http_client
         .post(&rest_gateway_url)
         .header("x-road-client", consumer.to_string())
@@ -235,7 +252,10 @@ async fn test_security_server_e2e_flow() {
     // -------------------------------------------------------------------------
     let unknown_service = ServiceId::new(provider.clone(), "secretDatabase", None::<&str>).unwrap();
     // Grant access to non-existent backend to test service resolution
-    node.server_conf.grant_access(&unknown_service, &consumer).await.unwrap();
+    node.server_conf
+        .grant_access(&unknown_service, &consumer)
+        .await
+        .unwrap();
 
     let resp_not_found = http_client
         .post(&server_proxy_url)
@@ -324,7 +344,8 @@ async fn test_security_server_e2e_flow() {
 
     assert_eq!(unauth_soap_resp.status(), reqwest::StatusCode::FORBIDDEN);
     let fault_xml = unauth_soap_resp.text().await.unwrap();
-    let parsed_fault = message::SoapEnvelopeXml::from_xml(&fault_xml).expect("Fault must be parseable SOAP XML");
+    let parsed_fault =
+        message::SoapEnvelopeXml::from_xml(&fault_xml).expect("Fault must be parseable SOAP XML");
     assert!(parsed_fault.is_fault());
     let fault = parsed_fault.body.fault.unwrap();
     assert_eq!(fault.fault_code, "SOAP-ENV:Client");
@@ -346,7 +367,12 @@ async fn test_security_server_e2e_flow() {
         "subsystem_code": "PROVIDER",
         "software_token_pin": "5678"
     });
-    let init_post_resp = http_client.post(&init_url).json(&init_req).send().await.unwrap();
+    let init_post_resp = http_client
+        .post(&init_url)
+        .json(&init_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(init_post_resp.status(), reqwest::StatusCode::OK);
 
     // B) Client Enable / Disable & Details
@@ -358,7 +384,8 @@ async fn test_security_server_e2e_flow() {
     let client_dto: Value = client_get_resp.json().await.unwrap();
     assert_eq!(client_dto["member_code"], "12345678");
 
-    let client_disable_url = format!("http://{admin_bind}/api/v1/clients/{provider_encoded}/disable");
+    let client_disable_url =
+        format!("http://{admin_bind}/api/v1/clients/{provider_encoded}/disable");
     let disable_resp = http_client.put(&client_disable_url).send().await.unwrap();
     assert_eq!(disable_resp.status(), reqwest::StatusCode::OK);
 
@@ -367,7 +394,11 @@ async fn test_security_server_e2e_flow() {
     assert_eq!(enable_resp.status(), reqwest::StatusCode::OK);
 
     // C) Service & Custom Endpoint Management
-    let services_list = node.server_conf.list_services_for_client(&provider).await.unwrap();
+    let services_list = node
+        .server_conf
+        .list_services_for_client(&provider)
+        .await
+        .unwrap();
     assert!(!services_list.is_empty());
     let svc_id = services_list[0].id;
 
@@ -376,7 +407,12 @@ async fn test_security_server_e2e_flow() {
         "method": "GET",
         "path": "/users/profile"
     });
-    let add_ep_resp = http_client.post(&add_ep_url).json(&add_ep_req).send().await.unwrap();
+    let add_ep_resp = http_client
+        .post(&add_ep_url)
+        .json(&add_ep_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(add_ep_resp.status(), reqwest::StatusCode::OK);
     let ep_dto: Value = add_ep_resp.json().await.unwrap();
     let ep_id = ep_dto["id"].as_i64().unwrap();
@@ -386,7 +422,12 @@ async fn test_security_server_e2e_flow() {
     // Endpoint ACL: grant & list
     let ep_clients_url = format!("http://{admin_bind}/api/v1/endpoints/{ep_id}/service-clients");
     let grant_ep_req = json!({ "member_id": consumer.to_string() });
-    let grant_ep_resp = http_client.post(&ep_clients_url).json(&grant_ep_req).send().await.unwrap();
+    let grant_ep_resp = http_client
+        .post(&ep_clients_url)
+        .json(&grant_ep_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(grant_ep_resp.status(), reqwest::StatusCode::OK);
 
     let list_ep_resp = http_client.get(&ep_clients_url).send().await.unwrap();
@@ -400,7 +441,12 @@ async fn test_security_server_e2e_flow() {
         "group_code": "FINANCE-AUDITORS",
         "description": "Internal and external financial auditors"
     });
-    let create_group_resp = http_client.post(&groups_url).json(&create_group_req).send().await.unwrap();
+    let create_group_resp = http_client
+        .post(&groups_url)
+        .json(&create_group_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(create_group_resp.status(), reqwest::StatusCode::OK);
     let group_dto: Value = create_group_resp.json().await.unwrap();
     let group_id = group_dto["id"].as_i64().unwrap();
@@ -408,7 +454,12 @@ async fn test_security_server_e2e_flow() {
 
     let group_members_url = format!("http://{admin_bind}/api/v1/local-groups/{group_id}/members");
     let add_member_req = json!({ "member_id": consumer.to_string() });
-    let add_member_resp = http_client.post(&group_members_url).json(&add_member_req).send().await.unwrap();
+    let add_member_resp = http_client
+        .post(&group_members_url)
+        .json(&add_member_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(add_member_resp.status(), reqwest::StatusCode::OK);
 
     let list_members_resp = http_client.get(&group_members_url).send().await.unwrap();
@@ -426,19 +477,39 @@ async fn test_security_server_e2e_flow() {
 
     let generate_key_url = format!("http://{admin_bind}/api/v1/tokens/0/keys");
     let gen_key_req = json!({ "label": "e2e-signing-key" });
-    let gen_key_resp = http_client.post(&generate_key_url).json(&gen_key_req).send().await.unwrap();
+    let gen_key_resp = http_client
+        .post(&generate_key_url)
+        .json(&gen_key_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(gen_key_resp.status(), reqwest::StatusCode::OK);
     let key_dto: Value = gen_key_resp.json().await.unwrap();
     let key_id = key_dto["id"].as_str().unwrap();
     assert_eq!(key_dto["label"], "e2e-signing-key");
-    assert!(key_dto["public_key"].as_str().unwrap().contains("BEGIN PUBLIC KEY"));
+    assert!(
+        key_dto["public_key"]
+            .as_str()
+            .unwrap()
+            .contains("BEGIN PUBLIC KEY")
+    );
 
     let csr_url = format!("http://{admin_bind}/api/v1/keys/{key_id}/csrs");
     let csr_req = json!({ "subject_cn": "Security Server SS1 Signer" });
-    let csr_resp = http_client.post(&csr_url).json(&csr_req).send().await.unwrap();
+    let csr_resp = http_client
+        .post(&csr_url)
+        .json(&csr_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(csr_resp.status(), reqwest::StatusCode::OK);
     let csr_dto: Value = csr_resp.json().await.unwrap();
-    assert!(csr_dto["csr_pem"].as_str().unwrap().contains("BEGIN CERTIFICATE REQUEST"));
+    assert!(
+        csr_dto["csr_pem"]
+            .as_str()
+            .unwrap()
+            .contains("BEGIN CERTIFICATE REQUEST")
+    );
 
     // F) System Settings, Maintenance Mode & Diagnostics
     let version_url = format!("http://{admin_bind}/api/v1/system/version");
@@ -449,7 +520,12 @@ async fn test_security_server_e2e_flow() {
 
     let server_addr_url = format!("http://{admin_bind}/api/v1/system/server-address");
     let set_addr_req = json!({ "server_address": "https://ss.test.ee:8443" });
-    let set_addr_resp = http_client.put(&server_addr_url).json(&set_addr_req).send().await.unwrap();
+    let set_addr_resp = http_client
+        .put(&server_addr_url)
+        .json(&set_addr_req)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(set_addr_resp.status(), reqwest::StatusCode::OK);
 
     let get_addr_resp = http_client.get(&server_addr_url).send().await.unwrap();
@@ -524,16 +600,29 @@ async fn test_security_server_e2e_flow() {
     let archive_json: Value = archive_resp.json().await.unwrap();
     assert_eq!(archive_json["success"], true);
     let archived_count = archive_json["records_archived"].as_u64().unwrap();
-    assert!(archived_count > 0, "Expected at least 1 record archived, got {}", archived_count);
+    assert!(
+        archived_count > 0,
+        "Expected at least 1 record archived, got {}",
+        archived_count
+    );
 
-    let file_path = archive_json["file_path"].as_str().expect("Expected file_path in archive response");
-    assert!(std::path::Path::new(file_path).exists(), "Archive file {} must exist", file_path);
+    let file_path = archive_json["file_path"]
+        .as_str()
+        .expect("Expected file_path in archive response");
+    assert!(
+        std::path::Path::new(file_path).exists(),
+        "Archive file {} must exist",
+        file_path
+    );
 
     // Verify cryptographic hash chain & ASiC-E containers in the generated archive
     let verify_result = messagelog::verify_archive(file_path, None).expect("verify_archive failed");
     assert!(verify_result.valid);
     assert_eq!(verify_result.records_verified as u64, archived_count);
-    assert_eq!(verify_result.last_digest, archive_json["last_digest"].as_str().unwrap());
+    assert_eq!(
+        verify_result.last_digest,
+        archive_json["last_digest"].as_str().unwrap()
+    );
 
     // -------------------------------------------------------------------------
     // 10. Metaservices Verification (listMethods and allowedMethods)
@@ -556,11 +645,18 @@ async fn test_security_server_e2e_flow() {
         .iter()
         .filter_map(|m| m["service_code"].as_str())
         .collect();
-    assert!(methods.contains(&"getUserProfile"), "listMethods should contain getUserProfile");
-    assert!(methods.contains(&"getSoapUser"), "listMethods should contain getSoapUser");
+    assert!(
+        methods.contains(&"getUserProfile"),
+        "listMethods should contain getUserProfile"
+    );
+    assert!(
+        methods.contains(&"getSoapUser"),
+        "listMethods should contain getSoapUser"
+    );
 
     // REST allowedMethods
-    let allowed_methods_url = format!("http://{client_proxy_bind}/r1/{provider_str}/allowedMethods");
+    let allowed_methods_url =
+        format!("http://{client_proxy_bind}/r1/{provider_str}/allowedMethods");
     let allowed_resp = http_client
         .get(&allowed_methods_url)
         .header("x-road-client", consumer.to_string())
@@ -579,12 +675,10 @@ async fn test_security_server_e2e_flow() {
     assert!(allowed_methods.contains(&"getUserProfile"));
 
     // SOAP listMethods
-    let list_methods_service = ServiceId::new(provider.clone(), "listMethods", None::<&str>).unwrap();
-    let soap_list_envelope = message::SoapEnvelopeXml::new_request(
-        consumer.clone(),
-        list_methods_service,
-        None,
-    );
+    let list_methods_service =
+        ServiceId::new(provider.clone(), "listMethods", None::<&str>).unwrap();
+    let soap_list_envelope =
+        message::SoapEnvelopeXml::new_request(consumer.clone(), list_methods_service, None);
     let soap_list_resp = http_client
         .post(&client_proxy_url)
         .header("content-type", "text/xml; charset=utf-8")
