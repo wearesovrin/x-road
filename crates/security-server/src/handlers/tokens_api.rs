@@ -1,22 +1,21 @@
 use base64::Engine;
+use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{
     CsrDto, GenerateCsrReq, GenerateKeyReq, ImportCertReq, KeyDto, SimpleSuccessResponse, TokenDto,
     TokenLoginReq, TokenPinReq,
 };
 
-pub struct TokensApi {
-    pub state: AdminApiState,
-}
+pub struct TokensApi;
 
 #[OpenApi]
 impl TokensApi {
     /// Lists cryptographic tokens (software and hardware tokens).
     #[oai(path = "/v1/tokens", method = "get")]
-    pub async fn list_tokens(&self) -> Json<Vec<TokenDto>> {
-        let tokens = self.state.signer.list_tokens().await;
+    pub async fn list_tokens(&self, state: Data<&AppState>) -> Json<Vec<TokenDto>> {
+        let tokens = state.signer.list_tokens().await;
         let dtos = tokens
             .into_iter()
             .map(|t| TokenDto {
@@ -34,10 +33,11 @@ impl TokensApi {
     #[oai(path = "/v1/tokens/:id/login", method = "put")]
     pub async fn login_token(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<TokenLoginReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        match self.state.signer.login_token(&id.0, &body.pin).await {
+        match state.signer.login_token(&id.0, &body.pin).await {
             Ok(true) => Ok(Json(SimpleSuccessResponse {
                 success: true,
                 message: format!("Token {} logged in", id.0),
@@ -54,9 +54,10 @@ impl TokensApi {
     #[oai(path = "/v1/tokens/:id/logout", method = "put")]
     pub async fn logout_token(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        self.state
+        state
             .signer
             .logout_token(&id.0)
             .await
@@ -72,10 +73,11 @@ impl TokensApi {
     #[oai(path = "/v1/tokens/:id/pin", method = "put")]
     pub async fn update_token_pin(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<TokenPinReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        self.state
+        state
             .signer
             .set_token_pin(&id.0, body.old_pin.as_deref(), &body.new_pin)
             .await
@@ -91,12 +93,12 @@ impl TokensApi {
     #[oai(path = "/v1/tokens/:id/keys", method = "post")]
     pub async fn generate_token_key(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<GenerateKeyReq>,
     ) -> poem::Result<Json<KeyDto>> {
         let usage = proto::KeyUsageInfo::Signing;
-        let key_info = self
-            .state
+        let key_info = state
             .signer
             .generate_software_key(&id.0, &body.label, usage)
             .await
@@ -115,8 +117,8 @@ impl TokensApi {
 
     /// Lists all managed cryptographic keys.
     #[oai(path = "/v1/keys", method = "get")]
-    pub async fn list_keys(&self) -> Json<Vec<KeyDto>> {
-        let keys = self.state.signer.list_keys().await;
+    pub async fn list_keys(&self, state: Data<&AppState>) -> Json<Vec<KeyDto>> {
+        let keys = state.signer.list_keys().await;
         let dtos = keys
             .into_iter()
             .map(|k| KeyDto {
@@ -134,8 +136,12 @@ impl TokensApi {
 
     /// Gets key details by ID.
     #[oai(path = "/v1/keys/:id", method = "get")]
-    pub async fn get_key(&self, id: Path<String>) -> poem::Result<Json<KeyDto>> {
-        let k = self.state.signer.get_key(&id.0).await.ok_or_else(|| {
+    pub async fn get_key(
+        &self,
+        state: Data<&AppState>,
+        id: Path<String>,
+    ) -> poem::Result<Json<KeyDto>> {
+        let k = state.signer.get_key(&id.0).await.ok_or_else(|| {
             poem::Error::from_string("Key not found", poem::http::StatusCode::NOT_FOUND)
         })?;
 
@@ -152,8 +158,12 @@ impl TokensApi {
 
     /// Deletes a key by ID.
     #[oai(path = "/v1/keys/:id", method = "delete")]
-    pub async fn delete_key(&self, id: Path<String>) -> poem::Result<Json<SimpleSuccessResponse>> {
-        self.state
+    pub async fn delete_key(
+        &self,
+        state: Data<&AppState>,
+        id: Path<String>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
+        state
             .signer
             .delete_key(&id.0)
             .await
@@ -169,11 +179,11 @@ impl TokensApi {
     #[oai(path = "/v1/keys/:id/csrs", method = "post")]
     pub async fn generate_csr(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<GenerateCsrReq>,
     ) -> poem::Result<Json<CsrDto>> {
-        let csr_pem = self
-            .state
+        let csr_pem = state
             .signer
             .generate_csr(&id.0, &body.subject_cn)
             .await
@@ -190,13 +200,14 @@ impl TokensApi {
     #[oai(path = "/v1/token-certificates", method = "post")]
     pub async fn import_certificate(
         &self,
+        state: Data<&AppState>,
         body: Json<ImportCertReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let der = base64::engine::general_purpose::STANDARD
             .decode(&body.cert_der_base64)
             .map_err(poem::error::BadRequest)?;
 
-        self.state
+        state
             .signer
             .add_certificate(&body.key_id, der)
             .await

@@ -1,19 +1,17 @@
+use poem::web::Data;
 use poem_openapi::{OpenApi, payload::Json};
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{ArchiveResponse, LogRecordResponse};
 
-pub struct MessageLogApi {
-    pub state: AdminApiState,
-}
+pub struct MessageLogApi;
 
 #[OpenApi]
 impl MessageLogApi {
     /// Retrieves recent unarchived audit log records from the message log.
     #[oai(path = "/v1/messagelog/recent", method = "get")]
-    pub async fn recent_logs(&self) -> Json<Vec<LogRecordResponse>> {
-        let records = self
-            .state
+    pub async fn recent_logs(&self, state: Data<&AppState>) -> Json<Vec<LogRecordResponse>> {
+        let records = state
             .message_log
             .find_unarchived(50)
             .await
@@ -34,11 +32,11 @@ impl MessageLogApi {
 
     /// Triggers log archival of unarchived messages to gzip archives.
     #[oai(path = "/v1/messagelog/archive", method = "post")]
-    pub async fn archive_logs(&self) -> Json<ArchiveResponse> {
+    pub async fn archive_logs(&self, state: Data<&AppState>) -> Json<ArchiveResponse> {
         let archive_dir =
             std::env::var("XROAD_ARCHIVE_DIR").unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
         let archiver =
-            messagelog::MessageLogArchiver::new((*self.state.message_log).clone(), archive_dir)
+            messagelog::MessageLogArchiver::new((*state.message_log).clone(), archive_dir)
                 .with_max_records(100);
 
         match archiver.archive_batch().await {

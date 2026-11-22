@@ -1,28 +1,22 @@
 use base64::Engine;
 use identifiers::ClientId;
+use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{ClientDto, RegisterClientReq, SimpleSuccessResponse, StoreCertReq};
 
-pub struct ClientsApi {
-    pub state: AdminApiState,
-}
+pub struct ClientsApi;
 
 #[OpenApi]
 impl ClientsApi {
     /// Lists all registered clients.
     #[oai(path = "/v1/clients", method = "get")]
-    pub async fn list_clients(&self) -> Json<Vec<ClientDto>> {
-        let clients = self
-            .state
-            .server_conf
-            .list_clients()
-            .await
-            .unwrap_or_default();
+    pub async fn list_clients(&self, state: Data<&AppState>) -> Json<Vec<ClientDto>> {
+        let clients = state.server_conf.list_clients().await.unwrap_or_default();
         let mut list = Vec::new();
         for c in clients {
-            if let Ok(Some(m)) = self.state.server_conf.get_client(&c).await {
+            if let Ok(Some(m)) = state.server_conf.get_client(&c).await {
                 list.push(ClientDto {
                     id: c.to_string(),
                     instance: m.xroad_instance,
@@ -42,6 +36,7 @@ impl ClientsApi {
     #[oai(path = "/v1/clients", method = "post")]
     pub async fn register_client(
         &self,
+        state: Data<&AppState>,
         req: Json<RegisterClientReq>,
     ) -> Json<SimpleSuccessResponse> {
         let r = req.0;
@@ -51,8 +46,7 @@ impl ClientsApi {
             ClientId::member_unchecked(&r.instance, &r.member_class, &r.member_code)
         };
 
-        match self
-            .state
+        match state
             .server_conf
             .add_client(&client_id, r.is_authentication.unwrap_or(false))
             .await
@@ -70,10 +64,13 @@ impl ClientsApi {
 
     /// Gets details of a single registered client.
     #[oai(path = "/v1/clients/:id", method = "get")]
-    pub async fn get_client(&self, id: Path<String>) -> poem::Result<Json<ClientDto>> {
+    pub async fn get_client(
+        &self,
+        state: Data<&AppState>,
+        id: Path<String>,
+    ) -> poem::Result<Json<ClientDto>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        let model = self
-            .state
+        let model = state
             .server_conf
             .get_client(&client_id)
             .await
@@ -98,10 +95,11 @@ impl ClientsApi {
     #[oai(path = "/v1/clients/:id", method = "delete")]
     pub async fn delete_client(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .delete_client(&client_id)
             .await
@@ -117,10 +115,11 @@ impl ClientsApi {
     #[oai(path = "/v1/clients/:id/enable", method = "put")]
     pub async fn enable_client(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .set_client_status(&client_id, "REGISTERED")
             .await
@@ -136,10 +135,11 @@ impl ClientsApi {
     #[oai(path = "/v1/clients/:id/disable", method = "put")]
     pub async fn disable_client(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .set_client_status(&client_id, "DISABLED")
             .await
@@ -153,9 +153,13 @@ impl ClientsApi {
 
     /// Designates a client as the Security Server owner.
     #[oai(path = "/v1/clients/:id/make-owner", method = "put")]
-    pub async fn make_owner(&self, id: Path<String>) -> poem::Result<Json<SimpleSuccessResponse>> {
+    pub async fn make_owner(
+        &self,
+        state: Data<&AppState>,
+        id: Path<String>,
+    ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .make_owner(&client_id)
             .await
@@ -171,11 +175,11 @@ impl ClientsApi {
     #[oai(path = "/v1/clients/:id/tls-certificates", method = "get")]
     pub async fn list_client_tls_certificates(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<Vec<String>>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        let certs = self
-            .state
+        let certs = state
             .server_conf
             .get_certificates(&client_id)
             .await
@@ -192,6 +196,7 @@ impl ClientsApi {
     #[oai(path = "/v1/clients/:id/tls-certificates", method = "post")]
     pub async fn upload_client_tls_certificate(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<StoreCertReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
@@ -200,7 +205,7 @@ impl ClientsApi {
             .decode(&body.cert_der_base64)
             .map_err(poem::error::BadRequest)?;
 
-        self.state
+        state
             .server_conf
             .store_certificate(&client_id, &der)
             .await
@@ -214,7 +219,11 @@ impl ClientsApi {
 
     /// Stores a client certificate in DER format (Base64 encoded).
     #[oai(path = "/v1/certificates", method = "post")]
-    pub async fn store_certificate(&self, req: Json<StoreCertReq>) -> Json<SimpleSuccessResponse> {
+    pub async fn store_certificate(
+        &self,
+        state: Data<&AppState>,
+        req: Json<StoreCertReq>,
+    ) -> Json<SimpleSuccessResponse> {
         let client_id: ClientId = match req.client_id.parse() {
             Ok(c) => c,
             Err(e) => {
@@ -236,8 +245,7 @@ impl ClientsApi {
             }
         };
 
-        match self
-            .state
+        match state
             .server_conf
             .store_certificate(&client_id, &der_bytes)
             .await

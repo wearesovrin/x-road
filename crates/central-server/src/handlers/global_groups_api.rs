@@ -1,20 +1,18 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::{AddGroupMemberRequest, CreateGlobalGroupRequest, GlobalGroupDto};
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-pub struct GlobalGroupsApi {
-    pub db: CentralServerDb,
-}
+pub struct GlobalGroupsApi;
 
 #[OpenApi]
 impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups", method = "get")]
-    pub async fn list_global_groups(&self) -> Json<Vec<GlobalGroupDto>> {
-        let groups = self.db.list_global_groups().await.unwrap_or_default();
+    pub async fn list_global_groups(&self, state: Data<&AppState>) -> Json<Vec<GlobalGroupDto>> {
+        let groups = state.db.list_global_groups().await.unwrap_or_default();
         let mut dtos = Vec::new();
         for g in groups {
-            let members = self
+            let members = state
                 .db
                 .list_global_group_members(&g.group_code)
                 .await
@@ -31,10 +29,11 @@ impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups", method = "post")]
     pub async fn create_global_group(
         &self,
+        state: Data<&AppState>,
         body: Json<CreateGlobalGroupRequest>,
     ) -> poem::Result<Json<GlobalGroupDto>> {
         let req = body.0;
-        let g = self
+        let g = state
             .db
             .create_global_group(&req.group_code, &req.description)
             .await
@@ -50,9 +49,10 @@ impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups/:group_code", method = "get")]
     pub async fn get_global_group(
         &self,
+        state: Data<&AppState>,
         group_code: Path<String>,
     ) -> poem::Result<Json<GlobalGroupDto>> {
-        let g = self
+        let g = state
             .db
             .get_global_group(&group_code.0)
             .await
@@ -63,7 +63,7 @@ impl GlobalGroupsApi {
                 poem::Error::from_string("Global group not found", StatusCode::NOT_FOUND)
             })?;
 
-        let members = self
+        let members = state
             .db
             .list_global_group_members(&g.group_code)
             .await
@@ -77,8 +77,12 @@ impl GlobalGroupsApi {
     }
 
     #[oai(path = "/v1/global-groups/:group_code", method = "delete")]
-    pub async fn delete_global_group(&self, group_code: Path<String>) -> poem::Result<Json<bool>> {
-        let ok = self
+    pub async fn delete_global_group(
+        &self,
+        state: Data<&AppState>,
+        group_code: Path<String>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = state
             .db
             .delete_global_group(&group_code.0)
             .await
@@ -91,9 +95,10 @@ impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups/:group_code/members", method = "get")]
     pub async fn list_global_group_members(
         &self,
+        state: Data<&AppState>,
         group_code: Path<String>,
     ) -> poem::Result<Json<Vec<String>>> {
-        let members = self
+        let members = state
             .db
             .list_global_group_members(&group_code.0)
             .await
@@ -106,10 +111,12 @@ impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups/:group_code/members", method = "post")]
     pub async fn add_global_group_member(
         &self,
+        state: Data<&AppState>,
         group_code: Path<String>,
         body: Json<AddGroupMemberRequest>,
     ) -> poem::Result<Json<bool>> {
-        self.db
+        state
+            .db
             .add_to_global_group(&group_code.0, &body.0.client_id_str)
             .await
             .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
@@ -122,10 +129,11 @@ impl GlobalGroupsApi {
     )]
     pub async fn remove_global_group_member(
         &self,
+        state: Data<&AppState>,
         group_code: Path<String>,
         client_id: Path<String>,
     ) -> poem::Result<Json<bool>> {
-        let ok = self
+        let ok = state
             .db
             .remove_from_global_group(&group_code.0, &client_id.0)
             .await

@@ -28,8 +28,16 @@ pub use tokens_api::TokensApi;
 
 use globalconf::GlobalConf;
 use messagelog::MessageLogDb;
+use opentelemetry::{global, trace::TracerProvider as _};
+use opentelemetry_sdk::{
+    Resource,
+    propagation::TraceContextPropagator,
+    trace::{SdkTracer, SdkTracerProvider},
+};
 use poem::{
-    Endpoint, EndpointExt, IntoResponse, Middleware, Request, Response, Route, http::StatusCode,
+    Endpoint, EndpointExt, IntoResponse, Middleware, Request, Response, Route,
+    http::StatusCode,
+    middleware::{OpenTelemetryMetrics, OpenTelemetryTracing},
 };
 use poem_openapi::{
     OpenApiService,
@@ -40,6 +48,27 @@ use serverconf::DatabaseServerConf;
 use signer::SignerServiceImpl;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+pub fn init_tracer(service_name: &str) -> SdkTracer {
+    global::set_text_map_propagator(TraceContextPropagator::new());
+    let mut builder = SdkTracerProvider::builder().with_resource(
+        Resource::builder()
+            .with_service_name(service_name.to_string())
+            .build(),
+    );
+
+    if let Ok(exporter) = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()
+    {
+        builder = builder.with_batch_exporter(exporter);
+    }
+
+    let provider = builder.build();
+    let tracer = provider.tracer(service_name.to_string());
+    global::set_tracer_provider(provider);
+    tracer
+}
 
 // -----------------------------------------------------------------------------
 // Application State
@@ -73,6 +102,8 @@ pub struct AdminApiState {
     pub system_settings: Arc<RwLock<SystemSettingsState>>,
 }
 
+pub type AppState = AdminApiState;
+
 impl AdminApiState {
     pub fn new(
         server_conf: Arc<DatabaseServerConf>,
@@ -103,96 +134,28 @@ impl AdminApi {
         Self { state }
     }
 
-    pub fn system(&self) -> SystemApi {
-        SystemApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn initialization(&self) -> InitializationApi {
-        InitializationApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn clients(&self) -> ClientsApi {
-        ClientsApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn services(&self) -> ServicesApi {
-        ServicesApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn endpoints(&self) -> EndpointsApi {
-        EndpointsApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn local_groups(&self) -> LocalGroupsApi {
-        LocalGroupsApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn access_rights(&self) -> AccessRightsApi {
-        AccessRightsApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn tokens(&self) -> TokensApi {
-        TokensApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn certificate_authorities(&self) -> CertificateAuthoritiesApi {
-        CertificateAuthoritiesApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn backups(&self) -> BackupsApi {
-        BackupsApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn api_keys(&self) -> ApiKeysApi {
-        ApiKeysApi {
-            state: self.state.clone(),
-        }
-    }
-
-    pub fn message_log(&self) -> MessageLogApi {
-        MessageLogApi {
-            state: self.state.clone(),
-        }
-    }
-
     pub async fn get_status(&self) -> Json<ServerStatus> {
-        self.system().get_status().await
+        SystemApi.get_status(poem::web::Data(&self.state)).await
     }
 
     pub async fn get_metrics(&self) -> PlainText<String> {
-        self.system().get_metrics().await
+        SystemApi.get_metrics().await
     }
 
     pub async fn create_api_key(&self, req: Json<CreateApiKeyReq>) -> Json<ApiKeyResponse> {
-        self.api_keys().create_api_key(req).await
+        ApiKeysApi
+            .create_api_key(poem::web::Data(&self.state), req)
+            .await
     }
 
     pub async fn list_api_keys(&self) -> Json<Vec<ApiKeyDto>> {
-        self.api_keys().list_api_keys().await
+        ApiKeysApi.list_api_keys(poem::web::Data(&self.state)).await
     }
 
     pub async fn get_api_key(&self, id: Path<i64>) -> poem::Result<Json<ApiKeyDto>> {
-        self.api_keys().get_api_key(id).await
+        ApiKeysApi
+            .get_api_key(poem::web::Data(&self.state), id)
+            .await
     }
 
     pub async fn update_api_key(
@@ -200,18 +163,24 @@ impl AdminApi {
         id: Path<i64>,
         req: Json<UpdateApiKeyReq>,
     ) -> poem::Result<Json<ApiKeyDto>> {
-        self.api_keys().update_api_key(id, req).await
+        ApiKeysApi
+            .update_api_key(poem::web::Data(&self.state), id, req)
+            .await
     }
 
     pub async fn revoke_api_key(&self, id: Path<i64>) -> Json<bool> {
-        self.api_keys().revoke_api_key(id).await
+        ApiKeysApi
+            .revoke_api_key(poem::web::Data(&self.state), id)
+            .await
     }
 
     pub async fn validate_api_key(
         &self,
         req: Json<ValidateApiKeyReq>,
     ) -> Json<ValidateApiKeyResponse> {
-        self.api_keys().validate_api_key(req).await
+        ApiKeysApi
+            .validate_api_key(poem::web::Data(&self.state), req)
+            .await
     }
 }
 
@@ -292,46 +261,30 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
     };
 
     let api = (
-        InitializationApi {
-            state: state.clone(),
-        },
-        SystemApi {
-            state: state.clone(),
-        },
-        ClientsApi {
-            state: state.clone(),
-        },
-        ServicesApi {
-            state: state.clone(),
-        },
-        EndpointsApi {
-            state: state.clone(),
-        },
-        LocalGroupsApi {
-            state: state.clone(),
-        },
-        AccessRightsApi {
-            state: state.clone(),
-        },
-        TokensApi {
-            state: state.clone(),
-        },
-        CertificateAuthoritiesApi {
-            state: state.clone(),
-        },
-        BackupsApi {
-            state: state.clone(),
-        },
-        ApiKeysApi {
-            state: state.clone(),
-        },
-        MessageLogApi { state },
+        InitializationApi,
+        SystemApi,
+        ClientsApi,
+        ServicesApi,
+        EndpointsApi,
+        LocalGroupsApi,
+        AccessRightsApi,
+        TokensApi,
+        CertificateAuthoritiesApi,
+        BackupsApi,
+        ApiKeysApi,
+        MessageLogApi,
     );
 
     let api_service =
         OpenApiService::new(api, "X-Road Security Server Admin API", "0.1.0").server("/api");
     let ui = api_service.swagger_ui();
-    let auth_api = api_service.with(auth_middleware);
+    let tracer = init_tracer("xroad-security-server");
+    let auth_api = api_service
+        .with(auth_middleware)
+        .with(OpenTelemetryMetrics::new())
+        .with(OpenTelemetryTracing::new(tracer.clone()))
+        .data(state)
+        .data(tracer);
     Route::new().nest("/api", auth_api).nest("/swagger-ui", ui)
 }
 

@@ -1,17 +1,22 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::{CreateManagementRequestDto, ManagementRequestDto};
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-pub struct ManagementRequestsApi {
-    pub db: CentralServerDb,
-}
+pub struct ManagementRequestsApi;
 
 #[OpenApi]
 impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests", method = "get")]
-    pub async fn list_management_requests(&self) -> Json<Vec<ManagementRequestDto>> {
-        let reqs = self.db.list_management_requests().await.unwrap_or_default();
+    pub async fn list_management_requests(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<Vec<ManagementRequestDto>> {
+        let reqs = state
+            .db
+            .list_management_requests()
+            .await
+            .unwrap_or_default();
         Json(
             reqs.into_iter()
                 .map(|r| ManagementRequestDto {
@@ -31,10 +36,11 @@ impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests", method = "post")]
     pub async fn create_management_request(
         &self,
+        state: Data<&AppState>,
         body: Json<CreateManagementRequestDto>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
         let req = body.0;
-        let created = self
+        let created = state
             .db
             .create_management_request(
                 &req.request_type,
@@ -62,9 +68,10 @@ impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests/:id", method = "get")]
     pub async fn get_management_request(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
-        let r = self
+        let r = state
             .db
             .get_management_request(id.0)
             .await
@@ -90,9 +97,10 @@ impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests/:id/approval", method = "put")]
     pub async fn approve_management_request(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
-        let r = self
+        let r = state
             .db
             .approve_management_request(id.0)
             .await
@@ -113,9 +121,10 @@ impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests/:id/decline", method = "post")]
     pub async fn decline_management_request(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
-        let r = self
+        let r = state
             .db
             .decline_management_request(id.0)
             .await

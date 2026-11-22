@@ -1,36 +1,29 @@
+use poem::web::Data;
 use poem_openapi::{
     OpenApi,
     payload::{Json, PlainText},
 };
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{
     DiagnosticsGlobalConf, DiagnosticsOcsp, DiagnosticsTsa, MaintenanceModeResponse,
     ServerAddressReq, ServerAddressResponse, ServerStatus, SimpleSuccessResponse, SystemVersion,
 };
 
-pub struct SystemApi {
-    pub state: AdminApiState,
-}
+pub struct SystemApi;
 
 #[OpenApi]
 impl SystemApi {
     /// Returns the current operational status and version of the Security Server.
     #[oai(path = "/v1/status", method = "get")]
-    pub async fn get_status(&self) -> Json<ServerStatus> {
-        let clients = self
-            .state
-            .server_conf
-            .list_clients()
-            .await
-            .unwrap_or_default();
-        let logs = self
-            .state
+    pub async fn get_status(&self, state: Data<&AppState>) -> Json<ServerStatus> {
+        let clients = state.server_conf.list_clients().await.unwrap_or_default();
+        let logs = state
             .message_log
             .find_unarchived(100)
             .await
             .unwrap_or_default();
-        let owner = self.state.server_conf.get_owner().await.unwrap_or_default();
+        let owner = state.server_conf.get_owner().await.unwrap_or_default();
 
         Json(ServerStatus {
             status: "OK".to_string(),
@@ -60,8 +53,8 @@ impl SystemApi {
 
     /// Gets current Security Server network address.
     #[oai(path = "/v1/system/server-address", method = "get")]
-    pub async fn get_server_address(&self) -> Json<ServerAddressResponse> {
-        let settings = self.state.system_settings.read().await;
+    pub async fn get_server_address(&self, state: Data<&AppState>) -> Json<ServerAddressResponse> {
+        let settings = state.system_settings.read().await;
         Json(ServerAddressResponse {
             server_address: settings.server_address.clone(),
         })
@@ -71,9 +64,10 @@ impl SystemApi {
     #[oai(path = "/v1/system/server-address", method = "put")]
     pub async fn set_server_address(
         &self,
+        state: Data<&AppState>,
         body: Json<ServerAddressReq>,
     ) -> Json<SimpleSuccessResponse> {
-        let mut settings = self.state.system_settings.write().await;
+        let mut settings = state.system_settings.write().await;
         settings.server_address = body.server_address.clone();
         Json(SimpleSuccessResponse {
             success: true,
@@ -83,8 +77,11 @@ impl SystemApi {
 
     /// Gets maintenance mode status.
     #[oai(path = "/v1/system/maintenance-mode", method = "get")]
-    pub async fn get_maintenance_mode(&self) -> Json<MaintenanceModeResponse> {
-        let settings = self.state.system_settings.read().await;
+    pub async fn get_maintenance_mode(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<MaintenanceModeResponse> {
+        let settings = state.system_settings.read().await;
         Json(MaintenanceModeResponse {
             maintenance_mode: settings.maintenance_mode,
         })
@@ -92,8 +89,11 @@ impl SystemApi {
 
     /// Enables maintenance mode.
     #[oai(path = "/v1/system/maintenance-mode/enable", method = "put")]
-    pub async fn enable_maintenance_mode(&self) -> Json<SimpleSuccessResponse> {
-        let mut settings = self.state.system_settings.write().await;
+    pub async fn enable_maintenance_mode(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<SimpleSuccessResponse> {
+        let mut settings = state.system_settings.write().await;
         settings.maintenance_mode = true;
         Json(SimpleSuccessResponse {
             success: true,
@@ -103,8 +103,11 @@ impl SystemApi {
 
     /// Disables maintenance mode.
     #[oai(path = "/v1/system/maintenance-mode/disable", method = "put")]
-    pub async fn disable_maintenance_mode(&self) -> Json<SimpleSuccessResponse> {
-        let mut settings = self.state.system_settings.write().await;
+    pub async fn disable_maintenance_mode(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<SimpleSuccessResponse> {
+        let mut settings = state.system_settings.write().await;
         settings.maintenance_mode = false;
         Json(SimpleSuccessResponse {
             success: true,
@@ -114,8 +117,11 @@ impl SystemApi {
 
     /// Queries Global Configuration diagnostics.
     #[oai(path = "/v1/diagnostics/globalconf", method = "get")]
-    pub async fn get_globalconf_diagnostics(&self) -> Json<DiagnosticsGlobalConf> {
-        let gc = &self.state.global_conf;
+    pub async fn get_globalconf_diagnostics(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<DiagnosticsGlobalConf> {
+        let gc = &state.global_conf;
         Json(DiagnosticsGlobalConf {
             instance_identifier: gc.instance_identifier.clone(),
             status: "OK".to_string(),
@@ -128,8 +134,8 @@ impl SystemApi {
 
     /// Queries Approved Time-Stamping Authorities diagnostics.
     #[oai(path = "/v1/diagnostics/timestamping-services", method = "get")]
-    pub async fn get_tsa_diagnostics(&self) -> Json<Vec<DiagnosticsTsa>> {
-        let tsas = &self.state.global_conf.approved_tsps;
+    pub async fn get_tsa_diagnostics(&self, state: Data<&AppState>) -> Json<Vec<DiagnosticsTsa>> {
+        let tsas = &state.global_conf.approved_tsps;
         let dtos = tsas
             .iter()
             .map(|t| DiagnosticsTsa {
@@ -143,8 +149,8 @@ impl SystemApi {
 
     /// Queries OCSP Responders diagnostics.
     #[oai(path = "/v1/diagnostics/ocsp-responders", method = "get")]
-    pub async fn get_ocsp_diagnostics(&self) -> Json<Vec<DiagnosticsOcsp>> {
-        let cas = &self.state.global_conf.approved_cas;
+    pub async fn get_ocsp_diagnostics(&self, state: Data<&AppState>) -> Json<Vec<DiagnosticsOcsp>> {
+        let cas = &state.global_conf.approved_cas;
         let dtos = cas
             .iter()
             .map(|ca| DiagnosticsOcsp {

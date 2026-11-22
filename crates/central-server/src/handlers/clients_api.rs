@@ -1,17 +1,18 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::ClientDto;
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, payload::Json};
 
-pub struct ClientsApi {
-    pub db: CentralServerDb,
-}
+pub struct ClientsApi;
 
 #[OpenApi]
 impl ClientsApi {
     #[oai(path = "/v1/clients", method = "get")]
-    pub async fn list_all_clients(&self) -> poem::Result<Json<Vec<ClientDto>>> {
-        let clients = self.db.list_all_clients().await.map_err(|e| {
+    pub async fn list_all_clients(
+        &self,
+        state: Data<&AppState>,
+    ) -> poem::Result<Json<Vec<ClientDto>>> {
+        let clients = state.db.list_all_clients().await.map_err(|e| {
             poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
         })?;
         Ok(Json(

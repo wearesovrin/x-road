@@ -1,17 +1,15 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::SubsystemDto;
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-pub struct SubsystemsApi {
-    pub db: CentralServerDb,
-}
+pub struct SubsystemsApi;
 
 #[OpenApi]
 impl SubsystemsApi {
     #[oai(path = "/v1/subsystems", method = "get")]
-    pub async fn list_all_subsystems(&self) -> Json<Vec<SubsystemDto>> {
-        let subs = self.db.list_all_subsystems().await.unwrap_or_default();
+    pub async fn list_all_subsystems(&self, state: Data<&AppState>) -> Json<Vec<SubsystemDto>> {
+        let subs = state.db.list_all_subsystems().await.unwrap_or_default();
         Json(
             subs.into_iter()
                 .map(|s| SubsystemDto {
@@ -24,8 +22,12 @@ impl SubsystemsApi {
     }
 
     #[oai(path = "/v1/subsystems/:subsystem_id", method = "get")]
-    pub async fn get_subsystem(&self, subsystem_id: Path<i64>) -> poem::Result<Json<SubsystemDto>> {
-        let sub = self
+    pub async fn get_subsystem(
+        &self,
+        state: Data<&AppState>,
+        subsystem_id: Path<i64>,
+    ) -> poem::Result<Json<SubsystemDto>> {
+        let sub = state
             .db
             .get_subsystem(subsystem_id.0)
             .await
@@ -43,8 +45,12 @@ impl SubsystemsApi {
     }
 
     #[oai(path = "/v1/subsystems/:subsystem_id", method = "delete")]
-    pub async fn delete_subsystem(&self, subsystem_id: Path<i64>) -> poem::Result<Json<bool>> {
-        let ok = self
+    pub async fn delete_subsystem(
+        &self,
+        state: Data<&AppState>,
+        subsystem_id: Path<i64>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = state
             .db
             .delete_subsystem(subsystem_id.0)
             .await

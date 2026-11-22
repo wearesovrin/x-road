@@ -1,17 +1,15 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::{AddMemberClassRequest, MemberClassDto};
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-pub struct MemberClassesApi {
-    pub db: CentralServerDb,
-}
+pub struct MemberClassesApi;
 
 #[OpenApi]
 impl MemberClassesApi {
     #[oai(path = "/v1/member-classes", method = "get")]
-    pub async fn list_member_classes(&self) -> Json<Vec<MemberClassDto>> {
-        let classes = self.db.list_member_classes().await.unwrap_or_default();
+    pub async fn list_member_classes(&self, state: Data<&AppState>) -> Json<Vec<MemberClassDto>> {
+        let classes = state.db.list_member_classes().await.unwrap_or_default();
         Json(
             classes
                 .into_iter()
@@ -26,9 +24,10 @@ impl MemberClassesApi {
     #[oai(path = "/v1/member-classes", method = "post")]
     pub async fn add_member_class(
         &self,
+        state: Data<&AppState>,
         body: Json<AddMemberClassRequest>,
     ) -> poem::Result<Json<MemberClassDto>> {
-        let mc = self
+        let mc = state
             .db
             .add_member_class(&body.0.code, &body.0.description)
             .await
@@ -40,8 +39,12 @@ impl MemberClassesApi {
     }
 
     #[oai(path = "/v1/member-classes/:code", method = "get")]
-    pub async fn get_member_class(&self, code: Path<String>) -> poem::Result<Json<MemberClassDto>> {
-        let mc = self
+    pub async fn get_member_class(
+        &self,
+        state: Data<&AppState>,
+        code: Path<String>,
+    ) -> poem::Result<Json<MemberClassDto>> {
+        let mc = state
             .db
             .get_member_class(&code.0)
             .await
@@ -58,8 +61,12 @@ impl MemberClassesApi {
     }
 
     #[oai(path = "/v1/member-classes/:code", method = "delete")]
-    pub async fn delete_member_class(&self, code: Path<String>) -> poem::Result<Json<bool>> {
-        let ok = self.db.delete_member_class(&code.0).await.map_err(|e| {
+    pub async fn delete_member_class(
+        &self,
+        state: Data<&AppState>,
+        code: Path<String>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = state.db.delete_member_class(&code.0).await.map_err(|e| {
             poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
         })?;
         Ok(Json(ok))

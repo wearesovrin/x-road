@@ -1,12 +1,11 @@
 use identifiers::ClientId;
+use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{AddGroupMemberReq, AddLocalGroupReq, LocalGroupDto, SimpleSuccessResponse};
 
-pub struct LocalGroupsApi {
-    pub state: AdminApiState,
-}
+pub struct LocalGroupsApi;
 
 #[OpenApi]
 impl LocalGroupsApi {
@@ -14,11 +13,11 @@ impl LocalGroupsApi {
     #[oai(path = "/v1/clients/:id/local-groups", method = "get")]
     pub async fn list_client_local_groups(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
     ) -> poem::Result<Json<Vec<LocalGroupDto>>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        let groups = self
-            .state
+        let groups = state
             .server_conf
             .list_local_groups(&client_id)
             .await
@@ -26,8 +25,7 @@ impl LocalGroupsApi {
 
         let mut list = Vec::new();
         for g in groups {
-            let members = self
-                .state
+            let members = state
                 .server_conf
                 .list_group_members(g.id)
                 .await
@@ -47,12 +45,12 @@ impl LocalGroupsApi {
     #[oai(path = "/v1/clients/:id/local-groups", method = "post")]
     pub async fn create_local_group(
         &self,
+        state: Data<&AppState>,
         id: Path<String>,
         body: Json<AddLocalGroupReq>,
     ) -> poem::Result<Json<LocalGroupDto>> {
         let client_id: ClientId = id.0.parse().map_err(poem::error::BadRequest)?;
-        let g = self
-            .state
+        let g = state
             .server_conf
             .create_local_group(&client_id, &body.group_code, &body.description)
             .await
@@ -69,9 +67,12 @@ impl LocalGroupsApi {
 
     /// Gets a local group by ID.
     #[oai(path = "/v1/local-groups/:id", method = "get")]
-    pub async fn get_local_group(&self, id: Path<i64>) -> poem::Result<Json<LocalGroupDto>> {
-        let g = self
-            .state
+    pub async fn get_local_group(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<Json<LocalGroupDto>> {
+        let g = state
             .server_conf
             .get_local_group(id.0)
             .await
@@ -80,8 +81,7 @@ impl LocalGroupsApi {
                 poem::Error::from_string("Local group not found", poem::http::StatusCode::NOT_FOUND)
             })?;
 
-        let members = self
-            .state
+        let members = state
             .server_conf
             .list_group_members(g.id)
             .await
@@ -99,9 +99,10 @@ impl LocalGroupsApi {
     #[oai(path = "/v1/local-groups/:id", method = "delete")]
     pub async fn delete_local_group(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        self.state
+        state
             .server_conf
             .delete_local_group(id.0)
             .await
@@ -115,9 +116,12 @@ impl LocalGroupsApi {
 
     /// Lists member clients of a local group.
     #[oai(path = "/v1/local-groups/:id/members", method = "get")]
-    pub async fn list_local_group_members(&self, id: Path<i64>) -> poem::Result<Json<Vec<String>>> {
-        let members = self
-            .state
+    pub async fn list_local_group_members(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<Json<Vec<String>>> {
+        let members = state
             .server_conf
             .list_group_members(id.0)
             .await
@@ -129,11 +133,12 @@ impl LocalGroupsApi {
     #[oai(path = "/v1/local-groups/:id/members", method = "post")]
     pub async fn add_local_group_member(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
         body: Json<AddGroupMemberReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = body.member_id.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .add_group_member(id.0, &client_id)
             .await
@@ -149,11 +154,12 @@ impl LocalGroupsApi {
     #[oai(path = "/v1/local-groups/:id/members/delete", method = "post")]
     pub async fn remove_local_group_member(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
         body: Json<AddGroupMemberReq>,
     ) -> poem::Result<Json<SimpleSuccessResponse>> {
         let client_id: ClientId = body.member_id.parse().map_err(poem::error::BadRequest)?;
-        self.state
+        state
             .server_conf
             .remove_group_member(id.0, &client_id)
             .await

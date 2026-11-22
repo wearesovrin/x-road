@@ -1,37 +1,40 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::{AddCaRequest, ApprovedCaDto};
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{
     OpenApi,
     param::Path,
     payload::{Json, PlainText},
 };
 
-pub struct CertificationServicesApi {
-    pub db: CentralServerDb,
-}
+pub struct CertificationServicesApi;
 
 #[OpenApi]
 impl CertificationServicesApi {
     #[oai(path = "/v1/certification-services", method = "get")]
-    pub async fn list_certification_services(&self) -> Json<Vec<ApprovedCaDto>> {
-        self.list_cas().await
+    pub async fn list_certification_services(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<Vec<ApprovedCaDto>> {
+        self.list_cas(state).await
     }
 
     #[oai(path = "/v1/certification-services", method = "post")]
     pub async fn add_certification_service(
         &self,
+        state: Data<&AppState>,
         body: Json<AddCaRequest>,
     ) -> poem::Result<Json<ApprovedCaDto>> {
-        self.add_ca(body).await
+        self.add_ca(state, body).await
     }
 
     #[oai(path = "/v1/certification-services/:id", method = "get")]
     pub async fn get_certification_service(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<ApprovedCaDto>> {
-        let ca = self
+        let ca = state
             .db
             .get_approved_ca(id.0)
             .await
@@ -48,16 +51,24 @@ impl CertificationServicesApi {
     }
 
     #[oai(path = "/v1/certification-services/:id", method = "delete")]
-    pub async fn delete_certification_service(&self, id: Path<i64>) -> poem::Result<Json<bool>> {
-        let ok = self.db.delete_approved_ca(id.0).await.map_err(|e| {
+    pub async fn delete_certification_service(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = state.db.delete_approved_ca(id.0).await.map_err(|e| {
             poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
         })?;
         Ok(Json(ok))
     }
 
     #[oai(path = "/v1/certification-services/:id/certificate", method = "get")]
-    pub async fn download_ca_certificate(&self, id: Path<i64>) -> poem::Result<PlainText<String>> {
-        let ca = self
+    pub async fn download_ca_certificate(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<PlainText<String>> {
+        let ca = state
             .db
             .get_approved_ca(id.0)
             .await
@@ -71,8 +82,8 @@ impl CertificationServicesApi {
     }
 
     #[oai(path = "/v1/cas", method = "get")]
-    pub async fn list_cas(&self) -> Json<Vec<ApprovedCaDto>> {
-        let cas = self.db.list_approved_cas().await.unwrap_or_default();
+    pub async fn list_cas(&self, state: Data<&AppState>) -> Json<Vec<ApprovedCaDto>> {
+        let cas = state.db.list_approved_cas().await.unwrap_or_default();
         let dtos = cas
             .into_iter()
             .map(|ca| ApprovedCaDto {
@@ -86,9 +97,13 @@ impl CertificationServicesApi {
     }
 
     #[oai(path = "/v1/cas", method = "post")]
-    pub async fn add_ca(&self, body: Json<AddCaRequest>) -> poem::Result<Json<ApprovedCaDto>> {
+    pub async fn add_ca(
+        &self,
+        state: Data<&AppState>,
+        body: Json<AddCaRequest>,
+    ) -> poem::Result<Json<ApprovedCaDto>> {
         let req = body.0;
-        let ca = self
+        let ca = state
             .db
             .add_approved_ca(
                 &req.name,

@@ -31,14 +31,48 @@ pub use system_api::SystemApi;
 pub use timestamping_services_api::TimestampingServicesApi;
 
 use crate::services::CentralServerDb;
-use poem::{EndpointExt, IntoResponse, Response, Route, get, handler, http::StatusCode, web::Data};
+use opentelemetry::{global, trace::TracerProvider as _};
+use opentelemetry_sdk::{
+    Resource,
+    propagation::TraceContextPropagator,
+    trace::{SdkTracer, SdkTracerProvider},
+};
+use poem::{
+    EndpointExt, IntoResponse, Response, Route, get, handler,
+    http::StatusCode,
+    middleware::{OpenTelemetryMetrics, OpenTelemetryTracing},
+    web::Data,
+};
 use poem_openapi::OpenApiService;
+
+pub fn init_tracer(service_name: &str) -> SdkTracer {
+    global::set_text_map_propagator(TraceContextPropagator::new());
+    let mut builder = SdkTracerProvider::builder().with_resource(
+        Resource::builder()
+            .with_service_name(service_name.to_string())
+            .build(),
+    );
+
+    if let Ok(exporter) = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()
+    {
+        builder = builder.with_batch_exporter(exporter);
+    }
+
+    let provider = builder.build();
+    let tracer = provider.tracer(service_name.to_string());
+    global::set_tracer_provider(provider);
+    tracer
+}
 
 #[derive(Clone)]
 pub struct CentralServerState {
     pub instance_id: String,
     pub db: CentralServerDb,
 }
+
+pub type AppState = CentralServerState;
 
 /// Helper wrapper for raw pre-rendered XML HTTP responses in Poem.
 pub struct RawXml(pub String);
@@ -134,42 +168,39 @@ impl<E: poem::Endpoint> poem::Endpoint for CentralServerAuthEndpoint<E> {
 
 pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
     let state = CentralServerState {
-        instance_id: instance_id.clone(),
+        instance_id,
         db: db.clone(),
     };
 
-    let auth_middleware = CentralServerAuthMiddleware { db: db.clone() };
+    let tracer = init_tracer("xroad-central-server");
+    let auth_middleware = CentralServerAuthMiddleware { db };
 
     let api = (
-        InitializationApi { db: db.clone() },
-        MemberClassesApi { db: db.clone() },
-        MembersApi {
-            instance_id: instance_id.clone(),
-            db: db.clone(),
-        },
-        SubsystemsApi { db: db.clone() },
-        ClientsApi { db: db.clone() },
-        SecurityServersApi { db: db.clone() },
-        GlobalGroupsApi { db: db.clone() },
-        CertificationServicesApi { db: db.clone() },
-        TimestampingServicesApi { db: db.clone() },
-        ConfigurationSourcesApi {
-            instance_id: instance_id.clone(),
-            db: db.clone(),
-        },
-        SystemApi {
-            instance_id,
-            db: db.clone(),
-        },
-        ManagementRequestsApi { db: db.clone() },
+        InitializationApi,
+        MemberClassesApi,
+        MembersApi,
+        SubsystemsApi,
+        ClientsApi,
+        SecurityServersApi,
+        GlobalGroupsApi,
+        CertificationServicesApi,
+        TimestampingServicesApi,
+        ConfigurationSourcesApi,
+        SystemApi,
+        ManagementRequestsApi,
         BackupsApi,
-        ApiKeysApi { db },
+        ApiKeysApi,
     );
 
     let api_service =
         OpenApiService::new(api, "X-Road Central Server Admin API", "0.1.0").server("/api");
     let ui = api_service.swagger_ui();
-    let auth_api = api_service.with(auth_middleware);
+    let auth_api = api_service
+        .with(auth_middleware)
+        .with(OpenTelemetryMetrics::new())
+        .with(OpenTelemetryTracing::new(tracer.clone()))
+        .data(state.clone())
+        .data(tracer);
 
     Route::new()
         .nest("/api", auth_api)

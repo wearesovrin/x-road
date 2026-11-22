@@ -1,33 +1,36 @@
+use crate::handlers::AppState;
 use crate::handlers::dto::{AddTsaRequest, ApprovedTsaDto};
-use crate::services::CentralServerDb;
-use poem::http::StatusCode;
+use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-pub struct TimestampingServicesApi {
-    pub db: CentralServerDb,
-}
+pub struct TimestampingServicesApi;
 
 #[OpenApi]
 impl TimestampingServicesApi {
     #[oai(path = "/v1/timestamping-services", method = "get")]
-    pub async fn list_timestamping_services(&self) -> Json<Vec<ApprovedTsaDto>> {
-        self.list_tsas().await
+    pub async fn list_timestamping_services(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<Vec<ApprovedTsaDto>> {
+        self.list_tsas(state).await
     }
 
     #[oai(path = "/v1/timestamping-services", method = "post")]
     pub async fn add_timestamping_service(
         &self,
+        state: Data<&AppState>,
         body: Json<AddTsaRequest>,
     ) -> poem::Result<Json<ApprovedTsaDto>> {
-        self.add_tsa(body).await
+        self.add_tsa(state, body).await
     }
 
     #[oai(path = "/v1/timestamping-services/:id", method = "get")]
     pub async fn get_timestamping_service(
         &self,
+        state: Data<&AppState>,
         id: Path<i64>,
     ) -> poem::Result<Json<ApprovedTsaDto>> {
-        let tsa = self
+        let tsa = state
             .db
             .get_approved_tsa(id.0)
             .await
@@ -43,16 +46,20 @@ impl TimestampingServicesApi {
     }
 
     #[oai(path = "/v1/timestamping-services/:id", method = "delete")]
-    pub async fn delete_timestamping_service(&self, id: Path<i64>) -> poem::Result<Json<bool>> {
-        let ok = self.db.delete_approved_tsa(id.0).await.map_err(|e| {
+    pub async fn delete_timestamping_service(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<Json<bool>> {
+        let ok = state.db.delete_approved_tsa(id.0).await.map_err(|e| {
             poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
         })?;
         Ok(Json(ok))
     }
 
     #[oai(path = "/v1/tsas", method = "get")]
-    pub async fn list_tsas(&self) -> Json<Vec<ApprovedTsaDto>> {
-        let tsas = self.db.list_approved_tsas().await.unwrap_or_default();
+    pub async fn list_tsas(&self, state: Data<&AppState>) -> Json<Vec<ApprovedTsaDto>> {
+        let tsas = state.db.list_approved_tsas().await.unwrap_or_default();
         let dtos = tsas
             .into_iter()
             .map(|t| ApprovedTsaDto {
@@ -65,9 +72,13 @@ impl TimestampingServicesApi {
     }
 
     #[oai(path = "/v1/tsas", method = "post")]
-    pub async fn add_tsa(&self, body: Json<AddTsaRequest>) -> poem::Result<Json<ApprovedTsaDto>> {
+    pub async fn add_tsa(
+        &self,
+        state: Data<&AppState>,
+        body: Json<AddTsaRequest>,
+    ) -> poem::Result<Json<ApprovedTsaDto>> {
         let req = body.0;
-        let tsa = self
+        let tsa = state
             .db
             .add_approved_tsa(&req.name, &req.url, req.cert_pem.as_bytes())
             .await

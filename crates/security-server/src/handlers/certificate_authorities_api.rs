@@ -1,18 +1,20 @@
+use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AdminApiState;
+use super::AppState;
 use super::dto::{AcmeOrderReq, AcmeOrderResponse, ApprovedCaDto};
 
-pub struct CertificateAuthoritiesApi {
-    pub state: AdminApiState,
-}
+pub struct CertificateAuthoritiesApi;
 
 #[OpenApi]
 impl CertificateAuthoritiesApi {
     /// Lists Approved Certification Authorities from Global Configuration.
     #[oai(path = "/v1/certificate-authorities", method = "get")]
-    pub async fn list_certificate_authorities(&self) -> Json<Vec<ApprovedCaDto>> {
-        let cas = &self.state.global_conf.approved_cas;
+    pub async fn list_certificate_authorities(
+        &self,
+        state: Data<&AppState>,
+    ) -> Json<Vec<ApprovedCaDto>> {
+        let cas = &state.global_conf.approved_cas;
         let dtos = cas
             .iter()
             .map(|ca| ApprovedCaDto {
@@ -31,6 +33,7 @@ impl CertificateAuthoritiesApi {
     )]
     pub async fn initiate_acme_order(
         &self,
+        _state: Data<&AppState>,
         ca_name: Path<String>,
         body: Json<AcmeOrderReq>,
     ) -> poem::Result<Json<AcmeOrderResponse>> {
