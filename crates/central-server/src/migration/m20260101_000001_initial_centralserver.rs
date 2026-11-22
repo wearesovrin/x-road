@@ -56,11 +56,31 @@ impl MigrationTrait for Migration {
                 schema.create_table_from_entity(crate::entities::system_parameter::Entity),
             )
             .await?;
+        manager
+            .create_table(schema.create_table_from_entity(crate::entities::api_key::Entity))
+            .await?;
+        manager
+            .create_table(schema.create_table_from_entity(crate::entities::api_key_role::Entity))
+            .await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::api_key_role::Entity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(crate::entities::api_key::Entity)
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(
                 Table::drop()

@@ -2,6 +2,7 @@ pub mod archiver;
 pub mod db;
 pub mod entities;
 pub mod migration;
+pub mod timestamp;
 
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha512};
@@ -9,6 +10,7 @@ use sha2::{Digest, Sha512};
 pub use archiver::{ArchiveInfo, ArchiveVerificationResult, MessageLogArchiver, verify_archive};
 pub use db::{MessageLogDb, NewLogRecord};
 pub use migration::Migrator;
+pub use timestamp::{TimestampBatchResult, TimestampingPolicy, TimestampingService};
 
 /// Logged message record stored for non-repudiation and auditing.
 #[derive(Debug, Clone)]
@@ -138,5 +140,17 @@ mod tests {
         db.mark_archived(&[log_id]).await.unwrap();
         let unarchived_after = db.find_unarchived(10).await.unwrap();
         assert!(unarchived_after.is_empty());
+
+        // Test timestamping service
+        let ts_service = TimestampingService::new(db.clone(), vec![]);
+        let ts_result = ts_service.timestamp_batch().await.unwrap();
+        assert!(ts_result.is_some());
+        let res = ts_result.unwrap();
+        assert_eq!(res.record_count, 1);
+        assert!(!res.timestamp_hash.is_empty());
+
+        // Verify record is now marked as timestamped
+        let untimestamped = db.find_untimestamped(10).await.unwrap();
+        assert!(untimestamped.is_empty());
     }
 }

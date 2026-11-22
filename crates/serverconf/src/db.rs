@@ -11,6 +11,7 @@ use sea_orm::{
     QueryFilter, Set,
 };
 use sea_orm_migration::MigratorTrait;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 /// SeaORM-backed Security Server configuration database provider.
@@ -235,9 +236,15 @@ impl DatabaseServerConf {
     }
 
     /// Validates an API key and returns its assigned roles if valid.
-    pub async fn validate_api_key(&self, encoded_key: &str) -> XRoadResult<Option<Vec<String>>> {
+    /// Checks both plaintext token (hashed with SHA-256) and direct encoded key.
+    pub async fn validate_api_key(&self, key_or_token: &str) -> XRoadResult<Option<Vec<String>>> {
+        let hashed_token = format!("{:x}", Sha256::digest(key_or_token.as_bytes()));
         let key = api_key::Entity::find()
-            .filter(api_key::Column::EncodedKey.eq(encoded_key))
+            .filter(
+                sea_orm::Condition::any()
+                    .add(api_key::Column::EncodedKey.eq(key_or_token))
+                    .add(api_key::Column::EncodedKey.eq(&hashed_token)),
+            )
             .one(self.raw_connection())
             .await
             .map_err(|e| XRoadError::Database(format!("Failed to validate API key: {e}")))?;
@@ -253,6 +260,95 @@ impl DatabaseServerConf {
         } else {
             Ok(None)
         }
+    }
+
+    /// Lists all registered API keys with their assigned roles.
+    pub async fn list_api_keys(&self) -> XRoadResult<Vec<(api_key::Model, Vec<String>)>> {
+        let keys = api_key::Entity::find()
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to list API keys: {e}")))?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            let roles = api_key_role::Entity::find()
+                .filter(api_key_role::Column::ApiKeyId.eq(key.id))
+                .all(self.raw_connection())
+                .await
+                .map_err(|e| XRoadError::Database(format!("Failed to query API key roles: {e}")))?;
+            result.push((key, roles.into_iter().map(|r| r.role).collect()));
+        }
+        Ok(result)
+    }
+
+    /// Gets an API key and its assigned roles by its database ID or key_id UUID.
+    pub async fn get_api_key(&self, id: i64) -> XRoadResult<Option<(api_key::Model, Vec<String>)>> {
+        let key = api_key::Entity::find_by_id(id)
+            .one(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to get API key: {e}")))?;
+
+        if let Some(key_model) = key {
+            let roles = api_key_role::Entity::find()
+                .filter(api_key_role::Column::ApiKeyId.eq(key_model.id))
+                .all(self.raw_connection())
+                .await
+                .map_err(|e| XRoadError::Database(format!("Failed to query API key roles: {e}")))?;
+            Ok(Some((
+                key_model,
+                roles.into_iter().map(|r| r.role).collect(),
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Updates the assigned roles of an API key.
+    pub async fn update_api_key_roles(&self, id: i64, roles: &[&str]) -> XRoadResult<()> {
+        let _key = api_key::Entity::find_by_id(id)
+            .one(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to find API key: {e}")))?
+            .ok_or_else(|| XRoadError::Configuration(format!("API key {id} not found")))?;
+
+        // Remove old roles
+        api_key_role::Entity::delete_many()
+            .filter(api_key_role::Column::ApiKeyId.eq(id))
+            .exec(self.raw_connection())
+            .await
+            .map_err(|e| {
+                XRoadError::Database(format!("Failed to delete old API key roles: {e}"))
+            })?;
+
+        // Insert new roles
+        for role in roles {
+            api_key_role::ActiveModel {
+                api_key_id: Set(id),
+                role: Set(role.to_string()),
+                ..Default::default()
+            }
+            .insert(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to insert API key role: {e}")))?;
+        }
+
+        Ok(())
+    }
+
+    /// Revokes (deletes) an API key by its database ID.
+    pub async fn revoke_api_key(&self, id: i64) -> XRoadResult<()> {
+        api_key_role::Entity::delete_many()
+            .filter(api_key_role::Column::ApiKeyId.eq(id))
+            .exec(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to delete API key roles: {e}")))?;
+
+        api_key::Entity::delete_by_id(id)
+            .exec(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to delete API key: {e}")))?;
+
+        Ok(())
     }
 
     /// Stores a certificate for a client.
@@ -294,14 +390,119 @@ impl DatabaseServerConf {
         Ok(certs.into_iter().map(|c| c.data).collect())
     }
 
-    /// Deletes a client and cascading dependencies.
+    /// Deletes a client and all cascading dependencies (services, endpoints, access rights, certificates).
     pub async fn delete_client(&self, client_id: &ClientId) -> XRoadResult<()> {
         let client_model = self.get_client(client_id).await?;
         if let Some(c) = client_model {
+            let client_str = client_id.to_string();
+
+            // 1. Delete endpoints and endpoint access rights
+            let endpoints = endpoint::Entity::find()
+                .filter(endpoint::Column::ClientId.eq(c.id))
+                .all(self.raw_connection())
+                .await
+                .unwrap_or_default();
+            for ep in endpoints {
+                let _ = self.delete_endpoint(ep.id).await;
+            }
+
+            // 2. Delete services and access rights under client's service descriptions
+            let descriptions = service_description::Entity::find()
+                .filter(service_description::Column::ClientId.eq(c.id))
+                .all(self.raw_connection())
+                .await
+                .unwrap_or_default();
+
+            for desc in &descriptions {
+                let services = service::Entity::find()
+                    .filter(service::Column::ServiceDescriptionId.eq(desc.id))
+                    .all(self.raw_connection())
+                    .await
+                    .unwrap_or_default();
+                for svc in services {
+                    let svc_prefix = format!("{}/{}", client_str, svc.service_code);
+                    let _ = access_right::Entity::delete_many()
+                        .filter(access_right::Column::ServiceIdStr.contains(&svc_prefix))
+                        .exec(self.raw_connection())
+                        .await;
+                    let _ = service::Entity::delete_by_id(svc.id)
+                        .exec(self.raw_connection())
+                        .await;
+                }
+            }
+
+            // 3. Delete access rights granted to this client as subject
+            let _ = access_right::Entity::delete_many()
+                .filter(access_right::Column::SubjectClientIdStr.eq(&client_str))
+                .exec(self.raw_connection())
+                .await;
+
+            // 4. Delete service descriptions
+            let _ = service_description::Entity::delete_many()
+                .filter(service_description::Column::ClientId.eq(c.id))
+                .exec(self.raw_connection())
+                .await;
+
+            // 5. Delete client certificates
+            let _ = certificate::Entity::delete_many()
+                .filter(certificate::Column::ClientId.eq(c.id))
+                .exec(self.raw_connection())
+                .await;
+
+            // 6. Delete group memberships
+            let _ = group_member::Entity::delete_many()
+                .filter(group_member::Column::MemberClientIdStr.eq(&client_str))
+                .exec(self.raw_connection())
+                .await;
+
+            // 7. Delete client record
             client::Entity::delete_by_id(c.id)
                 .exec(self.raw_connection())
                 .await
                 .map_err(|e| XRoadError::Database(format!("Failed to delete client: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Deletes a service and its cascading access rights.
+    pub async fn delete_service_cascade(
+        &self,
+        client_id: &ClientId,
+        service_code: &str,
+    ) -> XRoadResult<()> {
+        let client_model = self
+            .get_client(client_id)
+            .await?
+            .ok_or_else(|| XRoadError::Configuration(format!("Client not found: {client_id}")))?;
+
+        let descriptions = service_description::Entity::find()
+            .filter(service_description::Column::ClientId.eq(client_model.id))
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| {
+                XRoadError::Database(format!("Failed to query service descriptions: {e}"))
+            })?;
+
+        for desc in descriptions {
+            let svc = service::Entity::find()
+                .filter(service::Column::ServiceDescriptionId.eq(desc.id))
+                .filter(service::Column::ServiceCode.eq(service_code))
+                .one(self.raw_connection())
+                .await
+                .map_err(|e| XRoadError::Database(format!("Failed to query service: {e}")))?;
+
+            if let Some(s) = svc {
+                let svc_prefix = format!("{}/{}", client_id, service_code);
+                let _ = access_right::Entity::delete_many()
+                    .filter(access_right::Column::ServiceIdStr.contains(&svc_prefix))
+                    .exec(self.raw_connection())
+                    .await;
+
+                service::Entity::delete_by_id(s.id)
+                    .exec(self.raw_connection())
+                    .await
+                    .map_err(|e| XRoadError::Database(format!("Failed to delete service: {e}")))?;
+            }
         }
         Ok(())
     }

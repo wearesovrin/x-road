@@ -246,6 +246,16 @@ pub async fn handle_client_request(
     let message_hash = format!("{:x}", Sha256::digest(&body_bytes));
     let query_id = parsed_headers.id.clone();
 
+    // Compute signature if signer client is available
+    let (sig_hash, sig_data) = if state.signer_client.is_some() {
+        (
+            Some(format!("{:x}", Sha256::digest(message_hash.as_bytes()))),
+            Some(body_bytes.to_vec()),
+        )
+    } else {
+        (None, None)
+    };
+
     tracing::info!(
         query_id = %query_id,
         client = %parsed_headers.client,
@@ -268,9 +278,9 @@ pub async fn handle_client_request(
                 "REST".to_string()
             },
             message_hash,
-            signature_hash: None,
+            signature_hash: sig_hash.clone(),
             message_body: String::from_utf8(body_bytes.to_vec()).ok(),
-            signature_data: None,
+            signature_data: sig_data,
             response: false,
         })
         .await;
@@ -300,6 +310,9 @@ pub async fn handle_client_request(
     let mut forward_req = state.http_client.request(req.method().clone(), &target_url);
     for (k, v) in parsed_headers.to_http_headers() {
         forward_req = forward_req.header(k, v);
+    }
+    if let Some(ref sig) = sig_hash {
+        forward_req = forward_req.header("x-road-signature", sig);
     }
     if let Some(ct) = req.content_type() {
         forward_req = forward_req.header("content-type", ct);

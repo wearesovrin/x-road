@@ -1,4 +1,5 @@
 use common::headers;
+use globalconf::GlobalConf;
 use message::{SoapEnvelopeXml, XRoadHeaders};
 use messagelog::{MessageLogDb, NewLogRecord};
 use poem::{
@@ -17,6 +18,7 @@ pub struct ServerProxyState {
     pub message_log: Arc<MessageLogDb>,
     pub http_client: reqwest::Client,
     pub signer_client: Option<Arc<signer::SignerClient>>,
+    pub global_conf: Option<Arc<GlobalConf>>,
 }
 
 impl ServerProxyState {
@@ -26,11 +28,17 @@ impl ServerProxyState {
             message_log,
             http_client: reqwest::Client::new(),
             signer_client: None,
+            global_conf: None,
         }
     }
 
     pub fn with_signer_client(mut self, signer_client: Arc<signer::SignerClient>) -> Self {
         self.signer_client = Some(signer_client);
+        self
+    }
+
+    pub fn with_global_conf(mut self, global_conf: Arc<GlobalConf>) -> Self {
+        self.global_conf = Some(global_conf);
         self
     }
 }
@@ -237,6 +245,48 @@ pub async fn handle_server_request(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Security Server Mutual Authentication Verification
+    // -------------------------------------------------------------------------
+    if let Some(ref gconf) = state.global_conf {
+        let auth_cert_header = header_map
+            .get("x-road-auth-cert")
+            .or_else(|| header_map.get("x-road-client-cert"));
+
+        if let Some(cert_str) = auth_cert_header {
+            let cert_hash = format!("{:x}", Sha256::digest(cert_str.as_bytes()));
+            let is_known = gconf.sec_server_details.values().any(|ss| {
+                ss.auth_cert_hashes.iter().any(|c| {
+                    c.eq_ignore_ascii_case(cert_str)
+                        || c.eq_ignore_ascii_case(&cert_hash)
+                        || cert_str.contains(c)
+                })
+            });
+
+            if !is_known && !gconf.sec_server_details.is_empty() {
+                if is_xml {
+                    return Ok(Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .content_type("text/xml; charset=utf-8")
+                        .body(
+                            SoapEnvelopeXml::new_fault(
+                                Some(&parsed_headers),
+                                "SOAP-ENV:Client",
+                                "Client.InvalidSecurityServerAuthCert",
+                                Some("Security Server authentication certificate is not registered in Global Configuration"),
+                            )
+                            .to_xml()
+                            .unwrap_or_default(),
+                        ));
+                }
+                return Ok(Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .content_type("application/json")
+                    .body(r#"{"faultCode":"Client.InvalidSecurityServerAuthCert","faultString":"Security Server authentication certificate is not registered in Global Configuration"}"#));
+            }
+        }
+    }
+
     // 1. Verify access permissions for client calling service
     match state
         .server_conf
@@ -345,6 +395,15 @@ pub async fn handle_server_request(
 
     let message_hash = format!("{:x}", Sha256::digest(&body_bytes));
 
+    let (sig_hash, sig_data) = if let Some(sig) = header_map.get("x-road-signature") {
+        (
+            Some(format!("{:x}", Sha256::digest(sig.as_bytes()))),
+            Some(sig.as_bytes().to_vec()),
+        )
+    } else {
+        (None, None)
+    };
+
     // 3. Audit log request in messagelog
     let _ = state
         .message_log
@@ -359,9 +418,9 @@ pub async fn handle_server_request(
                 "REST".to_string()
             },
             message_hash,
-            signature_hash: None,
+            signature_hash: sig_hash,
             message_body: String::from_utf8(body_bytes.to_vec()).ok(),
-            signature_data: None,
+            signature_data: sig_data,
             response: false,
         })
         .await;

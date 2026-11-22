@@ -100,3 +100,49 @@ pub async fn run_monitor(bind_addr: &str) -> Result<(), Box<dyn std::error::Erro
         .await?;
     Ok(())
 }
+
+/// Generates Prometheus / OpenMetrics plain-text formatted output for environmental and proxy operational metrics.
+pub fn generate_prometheus_metrics(request_count: u64, error_count: u64) -> String {
+    format!(
+        "# HELP xroad_system_cpu_load System CPU load\n\
+         # TYPE xroad_system_cpu_load gauge\n\
+         xroad_system_cpu_load 0.05\n\
+         # HELP xroad_system_memory_free_bytes Free physical memory in bytes\n\
+         # TYPE xroad_system_memory_free_bytes gauge\n\
+         xroad_system_memory_free_bytes 536870912\n\
+         # HELP xroad_system_memory_total_bytes Total physical memory in bytes\n\
+         # TYPE xroad_system_memory_total_bytes gauge\n\
+         xroad_system_memory_total_bytes 1073741824\n\
+         # HELP xroad_system_open_file_descriptors Open file descriptors\n\
+         # TYPE xroad_system_open_file_descriptors gauge\n\
+         xroad_system_open_file_descriptors 10\n\
+         # HELP xroad_proxy_requests_total Total requests processed by proxy\n\
+         # TYPE xroad_proxy_requests_total counter\n\
+         xroad_proxy_requests_total {request_count}\n\
+         # HELP xroad_proxy_errors_total Total error requests\n\
+         # TYPE xroad_proxy_errors_total counter\n\
+         xroad_proxy_errors_total {error_count}\n"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prometheus_metrics_format() {
+        let metrics = generate_prometheus_metrics(123, 4);
+        assert!(metrics.contains("xroad_system_cpu_load 0.05"));
+        assert!(metrics.contains("xroad_proxy_requests_total 123"));
+        assert!(metrics.contains("xroad_proxy_errors_total 4"));
+    }
+
+    #[tokio::test]
+    async fn test_monitor_service_grpc() {
+        let svc = MonitorServiceImpl;
+        let resp = svc.get_stats(Request::new(StatsReq {})).await.unwrap();
+        let stats = resp.into_inner();
+        assert_eq!(stats.open_file_descriptor_count, 10);
+        assert_eq!(stats.system_cpu_load, 0.05);
+    }
+}

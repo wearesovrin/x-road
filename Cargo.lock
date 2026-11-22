@@ -7,6 +7,7 @@ name = "acme"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "common",
  "instant-acme",
  "rcgen",
@@ -617,6 +618,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -731,6 +733,7 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "strum",
  "thiserror",
 ]
@@ -2106,12 +2109,14 @@ dependencies = [
  "chrono",
  "common",
  "identifiers",
+ "reqwest",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "sha2 0.10.9",
  "thiserror",
  "tokio",
+ "tracing",
  "zip",
 ]
 
@@ -3427,6 +3432,7 @@ dependencies = [
  "identifiers",
  "message",
  "messagelog",
+ "monitor",
  "poem",
  "poem-openapi",
  "proto",
@@ -3436,6 +3442,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serverconf",
+ "sha2 0.10.9",
  "signer",
  "thiserror",
  "tokio",
@@ -3528,6 +3535,7 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "sha2 0.10.9",
  "strum",
  "thiserror",
  "tokio",

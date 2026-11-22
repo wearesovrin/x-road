@@ -216,5 +216,28 @@ mod tests {
         let certs = db_conf.get_certificates(&client).await.unwrap();
         assert_eq!(certs.len(), 1);
         assert_eq!(certs[0], dummy_cert);
+
+        // 7. API Key CRUD
+        let keys = db_conf.list_api_keys().await.unwrap();
+        assert_eq!(keys.len(), 1);
+        let key_model = &keys[0].0;
+        assert_eq!(key_model.label.as_deref(), Some("Test Key"));
+
+        let retrieved = db_conf.get_api_key(key_model.id).await.unwrap();
+        assert!(retrieved.is_some());
+
+        db_conf
+            .update_api_key_roles(key_model.id, &["XROAD_SYSTEM_ADMINISTRATOR"])
+            .await
+            .unwrap();
+        let updated = db_conf.get_api_key(key_model.id).await.unwrap().unwrap();
+        assert_eq!(updated.1, vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()]);
+
+        db_conf.revoke_api_key(key_model.id).await.unwrap();
+        assert!(db_conf.get_api_key(key_model.id).await.unwrap().is_none());
+
+        // 8. Cascade delete client
+        db_conf.delete_client(&client).await.unwrap();
+        assert!(db_conf.get_client(&client).await.unwrap().is_none());
     }
 }

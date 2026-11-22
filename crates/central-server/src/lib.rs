@@ -11,6 +11,7 @@ use poem_openapi::{
     param::Path,
     payload::{Attachment, Json, PlainText},
 };
+use sha2::{Digest, Sha256};
 
 pub use db::{CentralServerDb, ClientItem};
 pub use migration::Migrator;
@@ -253,6 +254,37 @@ pub struct BackupDto {
     pub filename: String,
     pub created_at: String,
     pub size_bytes: u64,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct CreateApiKeyReq {
+    pub roles: Vec<String>,
+    pub label: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateApiKeyReq {
+    pub roles: Vec<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ApiKeyDto {
+    pub id: i64,
+    pub key_id: String,
+    pub key: Option<String>,
+    pub label: Option<String>,
+    pub roles: Vec<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct ValidateApiKeyReq {
+    pub key: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ValidateApiKeyResp {
+    pub valid: bool,
+    pub roles: Vec<String>,
 }
 
 // ==========================================
@@ -1384,6 +1416,181 @@ impl CentralServerApi {
     async fn delete_backup(&self, _filename: Path<String>) -> Json<bool> {
         Json(true)
     }
+
+    // -------------------------------------------------------------------------
+    // API Keys Management
+    // -------------------------------------------------------------------------
+
+    /// Creates a new API key with assigned roles. Returns plaintext key token.
+    #[oai(path = "/v1/api-keys", method = "post")]
+    async fn create_api_key(&self, req: Json<CreateApiKeyReq>) -> Json<ApiKeyDto> {
+        let plaintext_key = uuid::Uuid::new_v4().to_string();
+        let encoded_key = format!("{:x}", Sha256::digest(plaintext_key.as_bytes()));
+        let role_strs: Vec<&str> = req.roles.iter().map(String::as_str).collect();
+
+        let key_id = self
+            .db
+            .create_api_key(&encoded_key, req.label.as_deref(), &role_strs)
+            .await
+            .unwrap_or_default();
+
+        let all_keys = self.db.list_api_keys().await.unwrap_or_default();
+        let db_id = all_keys
+            .iter()
+            .find(|(k, _)| k.key_id == key_id)
+            .map(|(k, _)| k.id)
+            .unwrap_or(0);
+
+        Json(ApiKeyDto {
+            id: db_id,
+            key_id,
+            key: Some(plaintext_key),
+            label: req.label.clone(),
+            roles: req.roles.clone(),
+        })
+    }
+
+    /// Lists all registered API keys.
+    #[oai(path = "/v1/api-keys", method = "get")]
+    async fn list_api_keys(&self) -> Json<Vec<ApiKeyDto>> {
+        let keys = self.db.list_api_keys().await.unwrap_or_default();
+        let list = keys
+            .into_iter()
+            .map(|(k, roles)| ApiKeyDto {
+                id: k.id,
+                key_id: k.key_id,
+                key: None,
+                label: k.label,
+                roles,
+            })
+            .collect();
+        Json(list)
+    }
+
+    /// Gets an API key and its assigned roles by database ID.
+    #[oai(path = "/v1/api-keys/:id", method = "get")]
+    async fn get_api_key(&self, id: Path<i64>) -> poem::Result<Json<ApiKeyDto>> {
+        match self.db.get_api_key(id.0).await {
+            Ok(Some((k, roles))) => Ok(Json(ApiKeyDto {
+                id: k.id,
+                key_id: k.key_id,
+                key: None,
+                label: k.label,
+                roles,
+            })),
+            _ => Err(poem::error::NotFoundError.into()),
+        }
+    }
+
+    /// Updates the assigned roles of an API key.
+    #[oai(path = "/v1/api-keys/:id", method = "put")]
+    async fn update_api_key(
+        &self,
+        id: Path<i64>,
+        req: Json<UpdateApiKeyReq>,
+    ) -> poem::Result<Json<ApiKeyDto>> {
+        let role_strs: Vec<&str> = req.roles.iter().map(String::as_str).collect();
+        match self.db.update_api_key_roles(id.0, &role_strs).await {
+            Ok(()) => match self.db.get_api_key(id.0).await {
+                Ok(Some((k, roles))) => Ok(Json(ApiKeyDto {
+                    id: k.id,
+                    key_id: k.key_id,
+                    key: None,
+                    label: k.label,
+                    roles,
+                })),
+                _ => Err(poem::error::NotFoundError.into()),
+            },
+            Err(e) => Err(poem::error::BadRequest(e).into()),
+        }
+    }
+
+    /// Revokes (deletes) an API key by database ID.
+    #[oai(path = "/v1/api-keys/:id", method = "delete")]
+    async fn revoke_api_key(&self, id: Path<i64>) -> Json<bool> {
+        let _ = self.db.revoke_api_key(id.0).await;
+        Json(true)
+    }
+
+    /// Validates an API key and returns assigned roles.
+    #[oai(path = "/v1/api-keys/validate", method = "post")]
+    async fn validate_api_key(&self, req: Json<ValidateApiKeyReq>) -> Json<ValidateApiKeyResp> {
+        match self.db.validate_api_key(&req.key).await {
+            Ok(Some(roles)) => Json(ValidateApiKeyResp { valid: true, roles }),
+            _ => Json(ValidateApiKeyResp {
+                valid: false,
+                roles: vec![],
+            }),
+        }
+    }
+}
+
+pub struct CentralServerAuthMiddleware {
+    pub db: CentralServerDb,
+}
+
+impl<E: poem::Endpoint> poem::Middleware<E> for CentralServerAuthMiddleware {
+    type Output = CentralServerAuthEndpoint<E>;
+
+    fn transform(&self, ep: E) -> Self::Output {
+        CentralServerAuthEndpoint {
+            ep,
+            db: self.db.clone(),
+        }
+    }
+}
+
+pub struct CentralServerAuthEndpoint<E> {
+    ep: E,
+    db: CentralServerDb,
+}
+
+impl<E: poem::Endpoint> poem::Endpoint for CentralServerAuthEndpoint<E> {
+    type Output = Response;
+
+    async fn call(&self, mut req: poem::Request) -> poem::Result<Self::Output> {
+        let auth_header = req
+            .headers()
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok());
+
+        if let Some(header) = auth_header {
+            if let Some(token) = common::headers::parse_api_key_header(header) {
+                match self.db.validate_api_key(token).await {
+                    Ok(Some(roles)) => {
+                        req.extensions_mut()
+                            .insert(common::AuthenticatedUser::new(None, roles));
+                    }
+                    _ => {
+                        return Ok(Response::builder()
+                            .status(StatusCode::UNAUTHORIZED)
+                            .content_type("application/json")
+                            .body(r#"{"error":{"code":"invalid_api_key","message":"The API key was not found or is invalid"}}"#));
+                    }
+                }
+            } else {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .content_type("application/json")
+                    .body(r#"{"error":{"code":"invalid_authorization_header","message":"Invalid Authorization header format"}}"#));
+            }
+        } else if std::env::var("XROAD_REQUIRE_API_KEY").as_deref() == Ok("true") {
+            let path = req.uri().path();
+            if !path.starts_with("/swagger-ui")
+                && !path.ends_with("/openapi.json")
+                && !path.contains("shared-params.xml")
+                && !path.ends_with("/status")
+            {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .content_type("application/json")
+                    .body(r#"{"error":{"code":"missing_api_key","message":"Missing required Authorization header"}}"#));
+            }
+        }
+
+        let resp = self.ep.call(req).await?;
+        Ok(resp.into_response())
+    }
 }
 
 pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
@@ -1391,6 +1598,8 @@ pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
         instance_id: instance_id.clone(),
         db: db.clone(),
     };
+
+    let auth_middleware = CentralServerAuthMiddleware { db: db.clone() };
 
     let api_service = OpenApiService::new(
         CentralServerApi {
@@ -1402,9 +1611,10 @@ pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
     )
     .server("/api");
     let ui = api_service.swagger_ui();
+    let auth_api = api_service.with(auth_middleware);
 
     Route::new()
-        .nest("/api", api_service)
+        .nest("/api", auth_api)
         .nest("/swagger-ui", ui)
         .at(
             "/internalconf/shared-params.xml",
@@ -1563,5 +1773,40 @@ mod tests {
         assert!(conf.is_member_in_group(&client, "security-officers"));
         assert_eq!(conf.approved_cas.len(), 1);
         assert_eq!(conf.approved_tsps.len(), 1);
+
+        // 11. API Keys Management
+        let key_id = db
+            .create_api_key(
+                "hash-xyz-123",
+                Some("Dev Admin Key"),
+                &["XROAD_SECURITY_OFFICER"],
+            )
+            .await
+            .unwrap();
+        assert!(!key_id.is_empty());
+
+        let keys = db.list_api_keys().await.unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].0.label.as_deref(), Some("Dev Admin Key"));
+        assert_eq!(keys[0].1, vec!["XROAD_SECURITY_OFFICER"]);
+
+        // Validate API key
+        let roles = db.validate_api_key("hash-xyz-123").await.unwrap();
+        assert_eq!(roles, Some(vec!["XROAD_SECURITY_OFFICER".to_string()]));
+
+        // Update roles
+        db.update_api_key_roles(keys[0].0.id, &["XROAD_SYSTEM_ADMINISTRATOR"])
+            .await
+            .unwrap();
+        let updated_roles = db.validate_api_key("hash-xyz-123").await.unwrap();
+        assert_eq!(
+            updated_roles,
+            Some(vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()])
+        );
+
+        // Revoke
+        db.revoke_api_key(keys[0].0.id).await.unwrap();
+        let revoked_roles = db.validate_api_key("hash-xyz-123").await.unwrap();
+        assert!(revoked_roles.is_none());
     }
 }

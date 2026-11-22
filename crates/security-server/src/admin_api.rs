@@ -3,10 +3,17 @@ use chrono::Utc;
 use globalconf::GlobalConf;
 use identifiers::{ClientId, ServiceId};
 use messagelog::MessageLogDb;
-use poem::Route;
-use poem_openapi::{Object, OpenApi, OpenApiService, param::Path, payload::Json};
+use poem::{
+    Endpoint, EndpointExt, IntoResponse, Middleware, Request, Response, Route, http::StatusCode,
+};
+use poem_openapi::{
+    Object, OpenApi, OpenApiService,
+    param::Path,
+    payload::{Json, PlainText},
+};
 use sea_orm::EntityTrait;
 use serverconf::{DatabaseServerConf, ServiceType};
+use sha2::{Digest, Sha256};
 use signer::SignerServiceImpl;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -286,14 +293,32 @@ pub struct DiagnosticsOcsp {
 
 #[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct CreateApiKeyReq {
-    pub key: String,
+    pub key: Option<String>,
+    pub label: Option<String>,
+    pub roles: Vec<String>,
+}
+
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct UpdateApiKeyReq {
+    pub roles: Vec<String>,
+}
+
+#[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ApiKeyDto {
+    pub id: i64,
+    pub key_id: String,
+    pub key: Option<String>,
     pub label: Option<String>,
     pub roles: Vec<String>,
 }
 
 #[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct ApiKeyResponse {
+    pub id: i64,
     pub key_id: String,
+    pub key: Option<String>,
+    pub label: Option<String>,
+    pub roles: Vec<String>,
 }
 
 #[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -426,6 +451,13 @@ impl AdminApi {
             unarchived_logs: logs.len(),
             is_initialized: owner.is_some(),
         })
+    }
+
+    /// Returns Prometheus / OpenMetrics operational and system metrics text.
+    #[oai(path = "/metrics", method = "get")]
+    async fn get_metrics(&self) -> PlainText<String> {
+        let text = monitor::generate_prometheus_metrics(0, 0);
+        PlainText(text)
     }
 
     /// Checks if the Security Server has been initialized.
@@ -1707,18 +1739,115 @@ impl AdminApi {
     // 11. API Keys & Audit Log
     // -------------------------------------------------------------------------
 
-    /// Creates an API key with assigned roles.
+    /// Creates an API key with assigned roles. Returns plaintext key token.
     #[oai(path = "/v1/api-keys", method = "post")]
     async fn create_api_key(&self, req: Json<CreateApiKeyReq>) -> Json<ApiKeyResponse> {
+        let plaintext_key = req
+            .key
+            .clone()
+            .filter(|k| !k.is_empty())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let encoded_key = format!("{:x}", Sha256::digest(plaintext_key.as_bytes()));
         let roles: Vec<&str> = req.roles.iter().map(String::as_str).collect();
+
         let key_id = self
             .state
             .server_conf
-            .create_api_key(&req.key, req.label.as_deref(), &roles)
+            .create_api_key(&encoded_key, req.label.as_deref(), &roles)
             .await
             .unwrap_or_default();
 
-        Json(ApiKeyResponse { key_id })
+        let all_keys = self
+            .state
+            .server_conf
+            .list_api_keys()
+            .await
+            .unwrap_or_default();
+        let db_id = all_keys
+            .iter()
+            .find(|(k, _)| k.key_id == key_id)
+            .map(|(k, _)| k.id)
+            .unwrap_or(0);
+
+        Json(ApiKeyResponse {
+            id: db_id,
+            key_id,
+            key: Some(plaintext_key),
+            label: req.label.clone(),
+            roles: req.roles.clone(),
+        })
+    }
+
+    /// Lists all registered API keys.
+    #[oai(path = "/v1/api-keys", method = "get")]
+    async fn list_api_keys(&self) -> Json<Vec<ApiKeyDto>> {
+        let keys = self
+            .state
+            .server_conf
+            .list_api_keys()
+            .await
+            .unwrap_or_default();
+        let list = keys
+            .into_iter()
+            .map(|(k, roles)| ApiKeyDto {
+                id: k.id,
+                key_id: k.key_id,
+                key: None,
+                label: k.label,
+                roles,
+            })
+            .collect();
+        Json(list)
+    }
+
+    /// Gets an API key and its assigned roles by database ID.
+    #[oai(path = "/v1/api-keys/:id", method = "get")]
+    async fn get_api_key(&self, id: Path<i64>) -> poem::Result<Json<ApiKeyDto>> {
+        match self.state.server_conf.get_api_key(id.0).await {
+            Ok(Some((k, roles))) => Ok(Json(ApiKeyDto {
+                id: k.id,
+                key_id: k.key_id,
+                key: None,
+                label: k.label,
+                roles,
+            })),
+            _ => Err(poem::error::NotFoundError.into()),
+        }
+    }
+
+    /// Updates the assigned roles of an API key.
+    #[oai(path = "/v1/api-keys/:id", method = "put")]
+    async fn update_api_key(
+        &self,
+        id: Path<i64>,
+        req: Json<UpdateApiKeyReq>,
+    ) -> poem::Result<Json<ApiKeyDto>> {
+        let role_strs: Vec<&str> = req.roles.iter().map(String::as_str).collect();
+        match self
+            .state
+            .server_conf
+            .update_api_key_roles(id.0, &role_strs)
+            .await
+        {
+            Ok(()) => match self.state.server_conf.get_api_key(id.0).await {
+                Ok(Some((k, roles))) => Ok(Json(ApiKeyDto {
+                    id: k.id,
+                    key_id: k.key_id,
+                    key: None,
+                    label: k.label,
+                    roles,
+                })),
+                _ => Err(poem::error::NotFoundError.into()),
+            },
+            Err(e) => Err(poem::error::BadRequest(e).into()),
+        }
+    }
+
+    /// Revokes (deletes) an API key by database ID.
+    #[oai(path = "/v1/api-keys/:id", method = "delete")]
+    async fn revoke_api_key(&self, id: Path<i64>) -> Json<bool> {
+        let _ = self.state.server_conf.revoke_api_key(id.0).await;
+        Json(true)
     }
 
     /// Validates an API key and returns assigned roles.
@@ -1835,7 +1964,78 @@ impl AdminApi {
     }
 }
 
+pub struct SecurityServerAuthMiddleware {
+    pub server_conf: Arc<DatabaseServerConf>,
+}
+
+impl<E: Endpoint> Middleware<E> for SecurityServerAuthMiddleware {
+    type Output = SecurityServerAuthEndpoint<E>;
+
+    fn transform(&self, ep: E) -> Self::Output {
+        SecurityServerAuthEndpoint {
+            ep,
+            server_conf: self.server_conf.clone(),
+        }
+    }
+}
+
+pub struct SecurityServerAuthEndpoint<E> {
+    ep: E,
+    server_conf: Arc<DatabaseServerConf>,
+}
+
+impl<E: Endpoint> Endpoint for SecurityServerAuthEndpoint<E> {
+    type Output = Response;
+
+    async fn call(&self, mut req: Request) -> poem::Result<Self::Output> {
+        let auth_header = req
+            .headers()
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok());
+
+        if let Some(header) = auth_header {
+            if let Some(token) = common::headers::parse_api_key_header(header) {
+                match self.server_conf.validate_api_key(token).await {
+                    Ok(Some(roles)) => {
+                        req.extensions_mut()
+                            .insert(common::AuthenticatedUser::new(None, roles));
+                    }
+                    _ => {
+                        return Ok(Response::builder()
+                            .status(StatusCode::UNAUTHORIZED)
+                            .content_type("application/json")
+                            .body(r#"{"error":{"code":"invalid_api_key","message":"The API key was not found or is invalid"}}"#));
+                    }
+                }
+            } else {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .content_type("application/json")
+                    .body(r#"{"error":{"code":"invalid_authorization_header","message":"Invalid Authorization header format"}}"#));
+            }
+        } else if std::env::var("XROAD_REQUIRE_API_KEY").as_deref() == Ok("true") {
+            let path = req.uri().path();
+            if !path.starts_with("/swagger-ui")
+                && !path.ends_with("/openapi.json")
+                && !path.ends_with("/status")
+            {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .content_type("application/json")
+                    .body(r#"{"error":{"code":"missing_api_key","message":"Missing required Authorization header"}}"#));
+            }
+        }
+
+        let resp = self.ep.call(req).await?;
+        Ok(resp.into_response())
+    }
+}
+
 pub fn admin_api_app(state: AdminApiState) -> Route {
+    let auth_middleware = SecurityServerAuthMiddleware {
+        server_conf: state.server_conf.clone(),
+    };
+
     let api_service = OpenApiService::new(
         AdminApi { state },
         "X-Road Security Server Admin API",
@@ -1843,7 +2043,76 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
     )
     .server("/api");
     let ui = api_service.swagger_ui();
-    Route::new()
-        .nest("/api", api_service)
-        .nest("/swagger-ui", ui)
+    let auth_api = api_service.with(auth_middleware);
+    Route::new().nest("/api", auth_api).nest("/swagger-ui", ui)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_security_server_admin_api_keys() {
+        let sc = Arc::new(DatabaseServerConf::connect_in_memory().await.unwrap());
+        let mlog = Arc::new(MessageLogDb::connect_in_memory().await.unwrap());
+        let gconf = Arc::new(GlobalConf::default());
+        let signer = Arc::new(SignerServiceImpl::new());
+
+        let state = AdminApiState::new(sc.clone(), mlog, gconf, signer);
+        let api = AdminApi {
+            state: state.clone(),
+        };
+
+        // 1. Check status & metrics
+        let status = api.get_status().await;
+        assert_eq!(status.0.status, "OK");
+
+        let metrics = api.get_metrics().await;
+        assert!(metrics.0.contains("xroad_system_cpu_load"));
+
+        // 2. Create API key
+        let create_req = CreateApiKeyReq {
+            key: None,
+            label: Some("Test Key".to_string()),
+            roles: vec!["XROAD_SECURITY_OFFICER".to_string()],
+        };
+        let created = api.create_api_key(Json(create_req)).await.0;
+        assert!(!created.key_id.is_empty());
+        assert!(created.key.is_some());
+        let plaintext_token = created.key.unwrap();
+
+        // 3. List API keys
+        let list = api.list_api_keys().await.0;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, created.id);
+
+        // 4. Validate API key using plaintext token
+        let val_req = ValidateApiKeyReq {
+            key: plaintext_token.clone(),
+        };
+        let val_resp = api.validate_api_key(Json(val_req)).await.0;
+        assert!(val_resp.valid);
+        assert_eq!(val_resp.roles, vec!["XROAD_SECURITY_OFFICER".to_string()]);
+
+        // 5. Update roles
+        let update_req = UpdateApiKeyReq {
+            roles: vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()],
+        };
+        let updated = api
+            .update_api_key(Path(created.id), Json(update_req))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            updated.roles,
+            vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()]
+        );
+
+        // 6. Revoke API key
+        let revoked = api.revoke_api_key(Path(created.id)).await.0;
+        assert!(revoked);
+
+        let list_after = api.list_api_keys().await.0;
+        assert!(list_after.is_empty());
+    }
 }

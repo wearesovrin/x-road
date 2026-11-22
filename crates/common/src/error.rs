@@ -58,6 +58,9 @@ pub enum XRoadError {
     #[error("ASiC container error: {0}")]
     Asic(String),
 
+    #[error("Message log error: {0}")]
+    MessageLog(String),
+
     #[error("RPC error: {0}")]
     Rpc(String),
 

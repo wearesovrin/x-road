@@ -172,4 +172,41 @@ impl MessageLogDb {
 
         Ok(())
     }
+
+    /// Finds message records that have not yet been timestamped.
+    pub async fn find_untimestamped(&self, limit: u64) -> XRoadResult<Vec<log_record::Model>> {
+        log_record::Entity::find()
+            .filter(log_record::Column::TimestampRecordId.is_null())
+            .order_by_asc(log_record::Column::Id)
+            .limit(limit)
+            .all(self.raw_connection())
+            .await
+            .map_err(|e| {
+                XRoadError::Database(format!("Failed to query untimestamped records: {e}"))
+            })
+    }
+
+    /// Updates records with the timestamp token record ID and the timestamp hash chain.
+    pub async fn update_timestamp(
+        &self,
+        record_ids: &[i64],
+        timestamp_record_id: i64,
+        timestamp_hash_chain: &str,
+    ) -> XRoadResult<()> {
+        log_record::Entity::update_many()
+            .col_expr(
+                log_record::Column::TimestampRecordId,
+                sea_orm::sea_query::Expr::val(timestamp_record_id),
+            )
+            .col_expr(
+                log_record::Column::TimestampHashChain,
+                sea_orm::sea_query::Expr::val(timestamp_hash_chain),
+            )
+            .filter(log_record::Column::Id.is_in(record_ids.to_vec()))
+            .exec(self.raw_connection())
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to update timestamp record: {e}")))?;
+
+        Ok(())
+    }
 }

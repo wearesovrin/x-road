@@ -1,3 +1,5 @@
+pub mod api_key;
+pub mod api_key_role;
 pub mod approved_ca;
 pub mod approved_tsa;
 pub mod global_group;
