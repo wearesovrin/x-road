@@ -2,3 +2,7 @@
 /java/
 **/*.rs.bk
 .env
+
+# Python bytecode
+__pycache__/
+*.py[cod]
