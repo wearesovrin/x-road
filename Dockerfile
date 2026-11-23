@@ -5,9 +5,10 @@
 # -----------------------------------------------------------------------------
 FROM rust:1-bookworm AS builder
 
-# Install build dependencies (protobuf-compiler for prost/tonic)
+# Install build dependencies (protobuf-compiler and libprotobuf-dev for prost/tonic)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
+    libprotobuf-dev \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*

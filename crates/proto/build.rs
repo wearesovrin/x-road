@@ -15,7 +15,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/opmonitor_service.proto",
     ];
 
-    tonic_prost_build::configure().compile_protos(&protos, &["proto"])?;
+    let mut includes = vec!["proto"];
+    if std::path::Path::new("/usr/include").exists() {
+        includes.push("/usr/include");
+    }
+    if std::path::Path::new("/usr/local/include").exists() {
+        includes.push("/usr/local/include");
+    }
+
+    tonic_prost_build::configure().compile_protos(&protos, &includes)?;
 
     Ok(())
 }
