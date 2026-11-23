@@ -1,5 +1,5 @@
 use crate::handlers::ApiTags;
-use crate::handlers::dto::BackupDto;
+use crate::handlers::dto::{BackupDto, UploadBackupRequest};
 use poem_openapi::{
     OpenApi,
     param::Path,
@@ -29,12 +29,21 @@ impl BackupsApi {
         })
     }
 
+    #[oai(path = "/v1/backups/upload", method = "post")]
+    pub async fn upload_backup(&self, body: Json<UploadBackupRequest>) -> Json<BackupDto> {
+        Json(BackupDto {
+            filename: body.0.filename,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            size_bytes: body.0.content_base64.len() as u64,
+        })
+    }
+
     #[oai(path = "/v1/backups/:filename/download", method = "get")]
     pub async fn download_backup(&self, filename: Path<String>) -> Attachment<Vec<u8>> {
         Attachment::new(vec![0x1f, 0x8b, 0x08, 0x00]).filename(filename.0)
     }
 
-    #[oai(path = "/v1/backups/:filename/restore", method = "post")]
+    #[oai(path = "/v1/backups/:filename/restore", method = "put")]
     pub async fn restore_backup(&self, _filename: Path<String>) -> Json<bool> {
         Json(true)
     }

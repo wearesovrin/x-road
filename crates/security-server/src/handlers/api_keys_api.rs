@@ -20,16 +20,17 @@ impl ApiKeysApi {
         req: Json<CreateApiKeyReq>,
     ) -> Json<ApiKeyResponse> {
         let plaintext_key = req
+            .0
             .key
             .clone()
             .filter(|k| !k.is_empty())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let encoded_key = format!("{:x}", Sha256::digest(plaintext_key.as_bytes()));
-        let roles: Vec<&str> = req.roles.iter().map(String::as_str).collect();
+        let roles: Vec<&str> = req.0.roles.iter().map(String::as_str).collect();
 
         let key_id = state
             .server_conf
-            .create_api_key(&encoded_key, req.label.as_deref(), &roles)
+            .create_api_key(&encoded_key, req.0.label.as_deref(), &roles)
             .await
             .unwrap_or_default();
 
@@ -42,10 +43,9 @@ impl ApiKeysApi {
 
         Json(ApiKeyResponse {
             id: db_id,
-            key_id,
-            key: Some(plaintext_key),
-            label: req.label.clone(),
-            roles: req.roles.clone(),
+            key: plaintext_key,
+            label: req.0.label.clone(),
+            roles: req.0.roles.clone(),
         })
     }
 

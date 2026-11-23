@@ -1,9 +1,11 @@
 use identifiers::ClientId;
 use poem::web::Data;
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
+use super::dto::{
+    AddGroupMemberReq, AddLocalGroupReq, LocalGroupDto, SimpleSuccessResponse, UpdateLocalGroupReq,
+};
 use super::{ApiTags, AppState};
-use super::dto::{AddGroupMemberReq, AddLocalGroupReq, LocalGroupDto, SimpleSuccessResponse};
 
 pub struct LocalGroupsApi;
 
@@ -92,6 +94,32 @@ impl LocalGroupsApi {
             description: g.description,
             updated_at: g.updated.to_rfc3339(),
             member_count: members.len(),
+        }))
+    }
+
+    /// Updates a local group description.
+    #[oai(path = "/v1/local-groups/:group_id", method = "patch")]
+    pub async fn update_local_group(
+        &self,
+        state: Data<&AppState>,
+        group_id: Path<i64>,
+        body: Json<UpdateLocalGroupReq>,
+    ) -> poem::Result<Json<LocalGroupDto>> {
+        let g = state
+            .server_conf
+            .get_local_group(group_id.0)
+            .await
+            .map_err(poem::error::InternalServerError)?
+            .ok_or_else(|| {
+                poem::Error::from_string("Local group not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
+
+        Ok(Json(LocalGroupDto {
+            id: g.id,
+            group_code: g.group_code,
+            description: body.0.description,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            member_count: 0,
         }))
     }
 

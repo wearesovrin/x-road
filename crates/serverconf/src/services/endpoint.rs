@@ -1,4 +1,4 @@
-use crate::entities::{access_right, endpoint};
+use crate::entities::{access_right, endpoint, service, service_description};
 use crate::services::client::ClientService;
 use common::{XRoadError, XRoadResult};
 use identifiers::ClientId;
@@ -32,6 +32,50 @@ impl EndpointService {
         .insert(db)
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to add endpoint: {e}")))
+    }
+
+    /// Adds an endpoint directly to a service by its service ID.
+    pub async fn add_service_endpoint(
+        db: &DatabaseConnection,
+        service_id: i64,
+        method: &str,
+        path: &str,
+    ) -> XRoadResult<endpoint::Model> {
+        let svc = service::Entity::find_by_id(service_id)
+            .one(db)
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query service: {e}")))?
+            .ok_or_else(|| XRoadError::Configuration(format!("Service not found: {service_id}")))?;
+
+        let desc = service_description::Entity::find_by_id(svc.service_description_id)
+            .one(db)
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query service description: {e}")))?
+            .ok_or_else(|| XRoadError::Configuration("Service description not found".into()))?;
+
+        endpoint::ActiveModel {
+            client_id: Set(desc.client_id),
+            service_code: Set(svc.service_code),
+            method: Set(method.to_uppercase()),
+            path: Set(path.to_string()),
+            generated: Set(false),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| XRoadError::Database(format!("Failed to add endpoint: {e}")))
+    }
+
+    /// Lists endpoints for a specific service code.
+    pub async fn list_endpoints_by_service_code(
+        db: &DatabaseConnection,
+        service_code: &str,
+    ) -> XRoadResult<Vec<endpoint::Model>> {
+        endpoint::Entity::find()
+            .filter(endpoint::Column::ServiceCode.eq(service_code))
+            .all(db)
+            .await
+            .map_err(|e| XRoadError::Database(format!("Failed to query endpoints: {e}")))
     }
 
     /// Lists all endpoints for a client.

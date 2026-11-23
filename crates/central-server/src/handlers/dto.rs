@@ -23,6 +23,11 @@ pub struct AddMemberClassRequest {
     pub description: String,
 }
 
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateMemberClassRequest {
+    pub description: String,
+}
+
 #[derive(Object, serde::Serialize, Debug, Clone)]
 pub struct CentralServerInfo {
     pub instance_identifier: String,
@@ -63,6 +68,12 @@ pub struct SubsystemDto {
 
 #[derive(Object, serde::Deserialize, Debug, Clone)]
 pub struct AddSubsystemRequest {
+    pub member_id: Option<i64>,
+    pub subsystem_code: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateSubsystemRequest {
     pub subsystem_code: String,
 }
 
@@ -88,6 +99,11 @@ pub struct SecurityServerDto {
 pub struct RegisterSecurityServerRequest {
     pub owner_id: i64,
     pub server_code: String,
+    pub address: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateSecurityServerRequest {
     pub address: String,
 }
 
@@ -121,6 +137,8 @@ pub struct ApprovedCaDto {
     pub name: String,
     pub authentication_only: bool,
     pub cert_profile_info: Option<String>,
+    pub not_before: Option<String>,
+    pub not_after: Option<String>,
 }
 
 #[derive(Object, serde::Deserialize, Debug, Clone)]
@@ -129,6 +147,55 @@ pub struct AddCaRequest {
     pub top_ca_cert_pem: String,
     pub authentication_only: bool,
     pub cert_profile_info: Option<String>,
+    pub acme_server_directory_url: Option<String>,
+    pub acme_server_ip_address: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateCaRequest {
+    pub cert_profile_info: Option<String>,
+    pub acme_server_directory_url: Option<String>,
+    pub acme_server_ip_address: Option<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct IntermediateCaDto {
+    pub id: i64,
+    pub ca_id: i64,
+    pub cert_hash: String,
+    pub created_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddIntermediateCaRequest {
+    pub cert_pem: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct OcspResponderDto {
+    pub id: i64,
+    pub url: String,
+    pub has_certificate: bool,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddOcspResponderRequest {
+    pub url: String,
+    pub cert_pem: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateOcspResponderRequest {
+    pub url: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct CertificateDetailsDto {
+    pub hash: String,
+    pub issuer_distinguished_name: String,
+    pub subject_distinguished_name: String,
+    pub not_before: String,
+    pub not_after: String,
 }
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
@@ -145,6 +212,11 @@ pub struct AddTsaRequest {
     pub cert_pem: String,
 }
 
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateTsaRequest {
+    pub url: String,
+}
+
 #[derive(Object, serde::Serialize, Debug, Clone)]
 pub struct GlobalGroupDto {
     pub group_code: String,
@@ -159,14 +231,151 @@ pub struct CreateGlobalGroupRequest {
 }
 
 #[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateGlobalGroupRequest {
+    pub description: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
 pub struct AddGroupMemberRequest {
     pub client_id_str: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddGroupMembersRequest {
+    pub items: Vec<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct GroupMembersFilterModelDto {
+    pub group_code: String,
+    pub members: Vec<String>,
 }
 
 #[derive(Object, serde::Serialize, Debug, Clone)]
 pub struct ConfigurationAnchorDto {
     pub instance_identifier: String,
     pub generated_at: String,
+    pub hash: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ConfigurationPartDto {
+    pub content_identifier: String,
+    pub file_name: String,
+    pub version: i32,
+    pub updated_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UploadConfigurationPartRequest {
+    pub content_identifier: String,
+    pub content_base64: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct SigningKeyDto {
+    pub id: String,
+    pub key_hash: String,
+    pub label: String,
+    pub active: bool,
+    pub available: bool,
+    pub created_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct AddSigningKeyRequest {
+    pub label: Option<String>,
+    pub token_id: Option<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct TokenDto {
+    pub id: String,
+    pub name: String,
+    pub serial_number: Option<String>,
+    pub status: String,
+    pub logged_in: bool,
+    pub active: bool,
+    pub available: bool,
+    pub possible_actions: Vec<String>,
+    pub keys: Vec<SigningKeyDto>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct TokenPasswordRequest {
+    pub password: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct TrustedAnchorDto {
+    pub hash: String,
+    pub instance_identifier: String,
+    pub generated_at: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UploadTrustedAnchorRequest {
+    pub anchor_xml: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct ManagementServicesConfigurationDto {
+    pub service_provider_id: Option<String>,
+    pub service_provider_name: Option<String>,
+    pub security_server_id: Option<String>,
+    pub security_server_address: Option<String>,
+    pub services_address: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateManagementServicesConfigurationRequest {
+    pub security_server_id: Option<String>,
+    pub services_address: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct RegisterServiceProviderRequest {
+    pub service_provider_id: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct IssuerServiceStateDto {
+    pub host: Option<String>,
+    pub bound: bool,
+    pub host_set: bool,
+    pub certificate_ready: bool,
+    pub run_in_progress: bool,
+    pub did_to_bind: Option<String>,
+    pub bound_did: Option<String>,
+    pub can_sign: bool,
+    pub status: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct IssuerServiceHostRequest {
+    pub host: String,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct HighAvailabilityClusterStatusDto {
+    pub status: String,
+    pub nodes: Vec<String>,
+}
+
+#[derive(Object, serde::Serialize, Debug, Clone)]
+pub struct DidCheckResultDto {
+    pub valid: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct DidCheckRequestDto {
+    pub did: String,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UpdateMemberDidRequest {
+    pub did: String,
 }
 
 #[derive(Object, serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -206,6 +415,12 @@ pub struct BackupDto {
     pub filename: String,
     pub created_at: String,
     pub size_bytes: u64,
+}
+
+#[derive(Object, serde::Deserialize, Debug, Clone)]
+pub struct UploadBackupRequest {
+    pub filename: String,
+    pub content_base64: String,
 }
 
 #[derive(Object, serde::Deserialize, Debug, Clone)]

@@ -113,6 +113,58 @@ impl ClientId {
         }
     }
 
+    /// Creates an unchecked ClientId from components without validation.
+    pub fn from_parts(
+        instance: impl Into<String>,
+        class: impl Into<String>,
+        code: impl Into<String>,
+        subsystem: Option<impl Into<String>>,
+    ) -> Self {
+        match subsystem {
+            Some(sub) => Self::subsystem_unchecked(instance, class, code, sub),
+            None => Self::member_unchecked(instance, class, code),
+        }
+    }
+
+    /// Creates an unchecked Member client identifier without validation.
+    pub fn new_member(
+        instance: impl Into<String>,
+        class: impl Into<String>,
+        code: impl Into<String>,
+    ) -> Self {
+        Self::member_unchecked(instance, class, code)
+    }
+
+    /// Creates an unchecked Subsystem client identifier without validation.
+    pub fn new_subsystem(
+        instance: impl Into<String>,
+        class: impl Into<String>,
+        code: impl Into<String>,
+        subsystem: impl Into<String>,
+    ) -> Self {
+        Self::subsystem_unchecked(instance, class, code, subsystem)
+    }
+
+    /// Returns the X-Road instance code.
+    pub fn xroad_instance(&self) -> &str {
+        &self.xroad_instance
+    }
+
+    /// Returns the member class.
+    pub fn member_class(&self) -> &str {
+        &self.member_class
+    }
+
+    /// Returns the member code.
+    pub fn member_code(&self) -> &str {
+        &self.member_code
+    }
+
+    /// Returns the subsystem code if present.
+    pub fn subsystem_code(&self) -> Option<&str> {
+        self.subsystem_code.as_deref()
+    }
+
     /// Returns the object type (`Member` if `subsystem_code` is None, `Subsystem` otherwise).
     #[inline]
     pub fn object_type(&self) -> XRoadObjectType {

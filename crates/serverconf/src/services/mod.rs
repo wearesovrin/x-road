@@ -90,7 +90,7 @@ impl ServerConf {
         service_version: Option<&str>,
         url: &str,
         service_type: ServiceType,
-    ) -> XRoadResult<()> {
+    ) -> XRoadResult<crate::database::entities::service_description::Model> {
         ServiceService::add_service(
             &self.raw_db,
             client_id,
@@ -243,6 +243,22 @@ impl ServerConf {
         path: &str,
     ) -> XRoadResult<ep_entity::Model> {
         EndpointService::add_endpoint(&self.raw_db, client_id, service_code, method, path).await
+    }
+
+    pub async fn add_service_endpoint(
+        &self,
+        service_id: i64,
+        method: &str,
+        path: &str,
+    ) -> XRoadResult<ep_entity::Model> {
+        EndpointService::add_service_endpoint(&self.raw_db, service_id, method, path).await
+    }
+
+    pub async fn list_service_endpoints(
+        &self,
+        service_code: &str,
+    ) -> XRoadResult<Vec<ep_entity::Model>> {
+        EndpointService::list_endpoints_by_service_code(&self.raw_db, service_code).await
     }
 
     pub async fn list_endpoints(&self, client_id: &ClientId) -> XRoadResult<Vec<ep_entity::Model>> {

@@ -18,7 +18,7 @@ impl ServiceService {
         service_version: Option<&str>,
         url: &str,
         service_type: ServiceType,
-    ) -> XRoadResult<()> {
+    ) -> XRoadResult<service_description::Model> {
         let client_model = ClientService::get_client(db, client_id)
             .await?
             .ok_or_else(|| XRoadError::Configuration(format!("Client not found: {client_id}")))?;
@@ -48,7 +48,7 @@ impl ServiceService {
         .await
         .map_err(|e| XRoadError::Database(format!("Failed to insert service: {e}")))?;
 
-        Ok(())
+        Ok(desc)
     }
 
     /// Lists service descriptions for a client.

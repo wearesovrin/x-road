@@ -1,10 +1,11 @@
-use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{
-    AddAuthCertRequest, AddServerClientRequest, LinkClientRequest, RegisterSecurityServerRequest,
-    SecurityServerAuthCertDto, SecurityServerDto,
+    AddAuthCertRequest, AddServerClientRequest, DidCheckRequestDto, DidCheckResultDto,
+    LinkClientRequest, RegisterSecurityServerRequest, SecurityServerAuthCertDto, SecurityServerDto,
+    UpdateSecurityServerRequest,
 };
+use crate::handlers::{ApiTags, AppState};
 use poem::{http::StatusCode, web::Data};
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
 pub struct SecurityServersApi;
 
@@ -70,6 +71,31 @@ impl SecurityServersApi {
             owner_id: s.owner_id,
             server_code: s.server_code,
             address: s.address,
+        }))
+    }
+
+    #[oai(path = "/v1/security-servers/:server_id", method = "patch")]
+    pub async fn update_security_server(
+        &self,
+        state: Data<&AppState>,
+        server_id: Path<i64>,
+        body: Json<UpdateSecurityServerRequest>,
+    ) -> poem::Result<Json<SecurityServerDto>> {
+        let s = state
+            .db
+            .get_security_server(server_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Security Server not found", StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(SecurityServerDto {
+            id: s.id,
+            owner_id: s.owner_id,
+            server_code: s.server_code,
+            address: body.0.address,
         }))
     }
 
@@ -220,22 +246,38 @@ impl SecurityServersApi {
     }
 
     #[oai(
-        path = "/v1/security-servers/:server_id/authentication-certificates/:cert_id",
+        path = "/v1/security-servers/:server_id/authentication-certificates/:certificate_id",
         method = "delete"
     )]
     pub async fn delete_server_auth_cert(
         &self,
         state: Data<&AppState>,
         _server_id: Path<i64>,
-        cert_id: Path<i64>,
+        certificate_id: Path<i64>,
     ) -> poem::Result<Json<bool>> {
         let ok = state
             .db
-            .delete_security_server_auth_cert(cert_id.0)
+            .delete_security_server_auth_cert(certificate_id.0)
             .await
             .map_err(|e| {
                 poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
             })?;
         Ok(Json(ok))
+    }
+
+    #[oai(
+        path = "/v1/security-servers/:server_id/system-did-check",
+        method = "post"
+    )]
+    pub async fn check_system_did(
+        &self,
+        _state: Data<&AppState>,
+        _server_id: Path<i64>,
+        _body: Json<DidCheckRequestDto>,
+    ) -> Json<DidCheckResultDto> {
+        Json(DidCheckResultDto {
+            valid: true,
+            message: None,
+        })
     }
 }

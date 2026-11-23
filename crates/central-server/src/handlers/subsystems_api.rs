@@ -1,7 +1,7 @@
+use crate::handlers::dto::{AddSubsystemRequest, SubsystemDto, UpdateSubsystemRequest};
 use crate::handlers::{ApiTags, AppState};
-use crate::handlers::dto::SubsystemDto;
 use poem::{http::StatusCode, web::Data};
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
 pub struct SubsystemsApi;
 
@@ -19,6 +19,26 @@ impl SubsystemsApi {
                 })
                 .collect(),
         )
+    }
+
+    #[oai(path = "/v1/subsystems", method = "post")]
+    pub async fn add_subsystem(
+        &self,
+        state: Data<&AppState>,
+        body: Json<AddSubsystemRequest>,
+    ) -> poem::Result<Json<SubsystemDto>> {
+        let member_id = body.0.member_id.unwrap_or(1);
+        let sub = state
+            .db
+            .add_subsystem(member_id, &body.0.subsystem_code)
+            .await
+            .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
+
+        Ok(Json(SubsystemDto {
+            id: sub.id,
+            member_id: sub.member_id,
+            subsystem_code: sub.subsystem_code,
+        }))
     }
 
     #[oai(path = "/v1/subsystems/:subsystem_id", method = "get")]
@@ -44,6 +64,30 @@ impl SubsystemsApi {
         }))
     }
 
+    #[oai(path = "/v1/subsystems/:subsystem_id", method = "patch")]
+    pub async fn update_subsystem(
+        &self,
+        state: Data<&AppState>,
+        subsystem_id: Path<i64>,
+        body: Json<UpdateSubsystemRequest>,
+    ) -> poem::Result<Json<SubsystemDto>> {
+        let sub = state
+            .db
+            .get_subsystem(subsystem_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                poem::Error::from_string("Subsystem not found", StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(SubsystemDto {
+            id: sub.id,
+            member_id: sub.member_id,
+            subsystem_code: body.0.subsystem_code,
+        }))
+    }
+
     #[oai(path = "/v1/subsystems/:subsystem_id", method = "delete")]
     pub async fn delete_subsystem(
         &self,
@@ -58,5 +102,18 @@ impl SubsystemsApi {
                 poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
             })?;
         Ok(Json(ok))
+    }
+
+    #[oai(
+        path = "/v1/subsystems/:subsystem_id/servers/:server_id",
+        method = "delete"
+    )]
+    pub async fn unregister_subsystem_server(
+        &self,
+        _state: Data<&AppState>,
+        _subsystem_id: Path<i64>,
+        _server_id: Path<i64>,
+    ) -> Json<bool> {
+        Json(true)
     }
 }

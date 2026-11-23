@@ -1,7 +1,7 @@
-use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{CreateManagementRequestDto, ManagementRequestDto};
+use crate::handlers::{ApiTags, AppState};
 use poem::{http::StatusCode, web::Data};
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
 pub struct ManagementRequestsApi;
 
@@ -65,15 +65,15 @@ impl ManagementRequestsApi {
         }))
     }
 
-    #[oai(path = "/v1/management-requests/:id", method = "get")]
+    #[oai(path = "/v1/management-requests/:management_request_id", method = "get")]
     pub async fn get_management_request(
         &self,
         state: Data<&AppState>,
-        id: Path<i64>,
+        management_request_id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
         let r = state
             .db
-            .get_management_request(id.0)
+            .get_management_request(management_request_id.0)
             .await
             .map_err(|e| {
                 poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
@@ -94,15 +94,30 @@ impl ManagementRequestsApi {
         }))
     }
 
-    #[oai(path = "/v1/management-requests/:id/approval", method = "put")]
+    #[oai(
+        path = "/v1/management-requests/:management_request_id",
+        method = "delete"
+    )]
+    pub async fn revoke_management_request(
+        &self,
+        _state: Data<&AppState>,
+        _management_request_id: Path<i64>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(
+        path = "/v1/management-requests/:management_request_id/approval",
+        method = "post"
+    )]
     pub async fn approve_management_request(
         &self,
         state: Data<&AppState>,
-        id: Path<i64>,
+        management_request_id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
         let r = state
             .db
-            .approve_management_request(id.0)
+            .approve_management_request(management_request_id.0)
             .await
             .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
 
@@ -118,15 +133,30 @@ impl ManagementRequestsApi {
         }))
     }
 
-    #[oai(path = "/v1/management-requests/:id/decline", method = "post")]
+    #[oai(
+        path = "/v1/management-requests/:management_request_id/approval",
+        method = "put"
+    )]
+    pub async fn approve_management_request_put(
+        &self,
+        state: Data<&AppState>,
+        management_request_id: Path<i64>,
+    ) -> poem::Result<Json<ManagementRequestDto>> {
+        self.approve_management_request(state, management_request_id).await
+    }
+
+    #[oai(
+        path = "/v1/management-requests/:management_request_id/decline",
+        method = "post"
+    )]
     pub async fn decline_management_request(
         &self,
         state: Data<&AppState>,
-        id: Path<i64>,
+        management_request_id: Path<i64>,
     ) -> poem::Result<Json<ManagementRequestDto>> {
         let r = state
             .db
-            .decline_management_request(id.0)
+            .decline_management_request(management_request_id.0)
             .await
             .map_err(|e| poem::Error::from_string(e.to_string(), StatusCode::BAD_REQUEST))?;
 

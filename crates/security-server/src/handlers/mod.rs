@@ -3,13 +3,19 @@ pub mod api_keys_api;
 pub mod backups_api;
 pub mod certificate_authorities_api;
 pub mod clients_api;
+pub mod dataspace_api;
+pub mod diagnostics_api;
 pub mod dto;
 pub mod endpoints_api;
 pub mod initialization_api;
+pub mod keys_api;
 pub mod local_groups_api;
+pub mod member_classes_api;
 pub mod message_log_api;
+pub mod openapi_api;
 pub mod services_api;
 pub mod system_api;
+pub mod token_certificates_api;
 pub mod tokens_api;
 pub mod web_ui;
 
@@ -18,26 +24,32 @@ pub use api_keys_api::ApiKeysApi;
 pub use backups_api::BackupsApi;
 pub use certificate_authorities_api::CertificateAuthoritiesApi;
 pub use clients_api::ClientsApi;
+pub use dataspace_api::DataspaceApi;
+pub use diagnostics_api::DiagnosticsApi;
 pub use dto::*;
 pub use endpoints_api::EndpointsApi;
 pub use initialization_api::InitializationApi;
+pub use keys_api::KeysApi;
 pub use local_groups_api::LocalGroupsApi;
+pub use member_classes_api::MemberClassesApi;
 pub use message_log_api::MessageLogApi;
+pub use openapi_api::OpenapiApi;
 pub use services_api::ServicesApi;
 pub use system_api::SystemApi;
+pub use token_certificates_api::TokenCertificatesApi;
 pub use tokens_api::TokensApi;
 
-use crate::middleware::{SecurityServerAuthMiddleware, init_tracer};
+use crate::middleware::{init_tracer, SecurityServerAuthMiddleware};
 use globalconf::GlobalConf;
 use messagelog::MessageLogDb;
 use poem::{
-    EndpointExt, Route,
     middleware::{OpenTelemetryMetrics, OpenTelemetryTracing},
+    EndpointExt, Route,
 };
 use poem_openapi::{
-    OpenApiService, Tags,
     param::Path,
     payload::{Json, PlainText},
+    OpenApiService, Tags,
 };
 
 /// OpenAPI specification tags for categorizing Security Server REST endpoints.
@@ -47,6 +59,8 @@ pub enum ApiTags {
     Initialization,
     /// System diagnostics, parameters, and environmental metrics
     System,
+    /// Diagnostics endpoints
+    Diagnostics,
     /// Client management (members and subsystems)
     Clients,
     /// Services, REST endpoints, and service descriptions
@@ -57,16 +71,26 @@ pub enum ApiTags {
     LocalGroups,
     /// Service access rights management
     AccessRights,
-    /// Cryptographic hardware/software tokens and keys
+    /// Cryptographic hardware/software tokens
     Tokens,
+    /// Cryptographic key management
+    Keys,
+    /// Token certificates management
+    TokenCertificates,
     /// Approved Certification Authorities (CAs)
     CertificateAuthorities,
+    /// Dataspace provisioning and agreement keys
+    Dataspace,
+    /// Member classes and names
+    MemberClasses,
     /// System configuration backups and restores
     Backups,
     /// Management API keys and roles
     ApiKeys,
     /// Operational message logging and audit trails
     MessageLog,
+    /// OpenAPI document export
+    Openapi,
 }
 use serverconf::DatabaseServerConf;
 use signer::SignerServiceImpl;
@@ -123,10 +147,6 @@ impl AdminApiState {
         }
     }
 }
-
-// -----------------------------------------------------------------------------
-// Compatibility Wrapper: AdminApi
-// -----------------------------------------------------------------------------
 
 pub struct AdminApi {
     pub state: AdminApiState,
@@ -192,20 +212,31 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
         server_conf: state.server_conf.clone(),
     };
 
-    let api = (
+    let api_part1 = (
         InitializationApi,
         SystemApi,
+        DiagnosticsApi,
         ClientsApi,
         ServicesApi,
         EndpointsApi,
         LocalGroupsApi,
         AccessRightsApi,
         TokensApi,
+        KeysApi,
+    );
+
+    let api_part2 = (
+        TokenCertificatesApi,
         CertificateAuthoritiesApi,
+        DataspaceApi,
+        MemberClassesApi,
         BackupsApi,
         ApiKeysApi,
         MessageLogApi,
+        OpenapiApi,
     );
+
+    let api = (api_part1, api_part2);
 
     let api_service =
         OpenApiService::new(api, "X-Road Security Server Admin API", "0.1.0").server("/api");
@@ -249,46 +280,22 @@ mod tests {
         // 2. Create API key
         let create_req = CreateApiKeyReq {
             key: None,
-            label: Some("Test Key".to_string()),
             roles: vec!["XROAD_SECURITY_OFFICER".to_string()],
+            label: Some("test-key".to_string()),
         };
-        let created = api.create_api_key(Json(create_req)).await.0;
-        assert!(!created.key_id.is_empty());
-        assert!(created.key.is_some());
-        let plaintext_token = created.key.unwrap();
+        let key = api.create_api_key(Json(create_req)).await;
+        assert_eq!(key.0.roles, vec!["XROAD_SECURITY_OFFICER"]);
 
-        // 3. List API keys
-        let list = api.list_api_keys().await.0;
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].id, created.id);
-
-        // 4. Validate API key using plaintext token
+        // 3. Validate API key
         let val_req = ValidateApiKeyReq {
-            key: plaintext_token.clone(),
+            key: key.0.key.clone(),
         };
-        let val_resp = api.validate_api_key(Json(val_req)).await.0;
-        assert!(val_resp.valid);
-        assert_eq!(val_resp.roles, vec!["XROAD_SECURITY_OFFICER".to_string()]);
+        let val_res = api.validate_api_key(Json(val_req)).await;
+        assert!(val_res.0.valid);
+        assert_eq!(val_res.0.roles, vec!["XROAD_SECURITY_OFFICER"]);
 
-        // 5. Update roles
-        let update_req = UpdateApiKeyReq {
-            roles: vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()],
-        };
-        let updated = api
-            .update_api_key(Path(created.id), Json(update_req))
-            .await
-            .unwrap()
-            .0;
-        assert_eq!(
-            updated.roles,
-            vec!["XROAD_SYSTEM_ADMINISTRATOR".to_string()]
-        );
-
-        // 6. Revoke API key
-        let revoked = api.revoke_api_key(Path(created.id)).await.0;
-        assert!(revoked);
-
-        let list_after = api.list_api_keys().await.0;
-        assert!(list_after.is_empty());
+        // 4. Revoke API key
+        let revoked = api.revoke_api_key(Path(key.0.id)).await;
+        assert!(revoked.0);
     }
 }

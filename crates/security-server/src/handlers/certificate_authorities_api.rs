@@ -1,8 +1,10 @@
 use poem::web::Data;
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
+use super::dto::{
+    AcmeOrderReq, AcmeOrderResponse, ApprovedCaDto, CsrSubjectFieldDto, PrioritizationStrategyDto,
+};
 use super::{ApiTags, AppState};
-use super::dto::{AcmeOrderReq, AcmeOrderResponse, ApprovedCaDto};
 
 pub struct CertificateAuthoritiesApi;
 
@@ -21,9 +23,53 @@ impl CertificateAuthoritiesApi {
                 name: ca.name.clone(),
                 authentication_only: false,
                 cert_profile_info: None,
+                ocsp_response_prioritization: Some("OCSP_RESPONSES_FIRST".to_string()),
             })
             .collect();
         Json(dtos)
+    }
+
+    #[oai(
+        path = "/v1/certificate-authorities/:ca_name/csr-subject-fields",
+        method = "get"
+    )]
+    pub async fn get_csr_subject_fields(
+        &self,
+        _state: Data<&AppState>,
+        _ca_name: Path<String>,
+    ) -> Json<Vec<CsrSubjectFieldDto>> {
+        Json(vec![
+            CsrSubjectFieldDto {
+                id: "O".to_string(),
+                label: "Organization (O)".to_string(),
+                required: true,
+                default_value: None,
+            },
+            CsrSubjectFieldDto {
+                id: "CN".to_string(),
+                label: "Common Name (CN)".to_string(),
+                required: true,
+                default_value: None,
+            },
+            CsrSubjectFieldDto {
+                id: "C".to_string(),
+                label: "Country (C)".to_string(),
+                required: true,
+                default_value: Some("EE".to_string()),
+            },
+        ])
+    }
+
+    #[oai(
+        path = "/v1/certificate-authorities/:ca_name/has-acme-eab-credentials",
+        method = "get"
+    )]
+    pub async fn has_acme_eab_credentials(
+        &self,
+        _state: Data<&AppState>,
+        _ca_name: Path<String>,
+    ) -> Json<bool> {
+        Json(false)
     }
 
     /// Initiates automated ACME certificate order (RFC 8555) via ACME protocol.
@@ -57,5 +103,18 @@ impl CertificateAuthoritiesApi {
             status: "PROCESSING".to_string(),
             domain: body.domain.clone(),
         }))
+    }
+
+    #[oai(
+        path = "/v1/certificate-authorities/ocsp-prioritization-strategy",
+        method = "get"
+    )]
+    pub async fn get_ocsp_prioritization_strategy(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<PrioritizationStrategyDto> {
+        Json(PrioritizationStrategyDto {
+            strategy: "OCSP_RESPONSES_FIRST".to_string(),
+        })
     }
 }

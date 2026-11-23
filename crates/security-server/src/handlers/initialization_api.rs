@@ -1,9 +1,12 @@
 use identifiers::ClientId;
 use poem::web::Data;
-use poem_openapi::{OpenApi, payload::Json};
+use poem_openapi::{payload::Json, OpenApi};
 
+use super::dto::{
+    InitialAdminUserReq, InitialAdminUserStatusDto, InitializationStatus, InitializeServerReq,
+    SimpleSuccessResponse,
+};
 use super::{ApiTags, AppState};
-use super::dto::{InitializationStatus, InitializeServerReq, SimpleSuccessResponse};
 
 pub struct InitializationApi;
 
@@ -63,6 +66,28 @@ impl InitializationApi {
         Json(SimpleSuccessResponse {
             success: true,
             message: format!("Security Server successfully initialized for owner {client_id}"),
+        })
+    }
+
+    #[oai(path = "/v1/initialization/admin-user", method = "post")]
+    pub async fn create_initial_admin_user(
+        &self,
+        _state: Data<&AppState>,
+        _req: Json<InitialAdminUserReq>,
+    ) -> Json<SimpleSuccessResponse> {
+        Json(SimpleSuccessResponse {
+            success: true,
+            message: "Initial admin user created".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/initialization/admin-user/status", method = "get")]
+    pub async fn get_initial_admin_user_status(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<InitialAdminUserStatusDto> {
+        Json(InitialAdminUserStatusDto {
+            admin_user_created: true,
         })
     }
 }

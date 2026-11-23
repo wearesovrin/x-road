@@ -21,8 +21,8 @@ impl MessageLogApi {
             .map(|r| LogRecordResponse {
                 id: r.id,
                 query_id: r.query_id,
-                client_id: r.client_id_str,
-                service_id: r.service_id_str,
+                client_id: r.client_id_str.unwrap_or_default(),
+                service_id: r.service_id_str.unwrap_or_default(),
                 archived: r.archived,
                 timestamp: r.time.to_rfc3339(),
             })
@@ -30,14 +30,16 @@ impl MessageLogApi {
         Json(list)
     }
 
-    /// Triggers log archival of unarchived messages to gzip archives.
+    /// Triggers on-demand message log archival and packaging into an ASiC-E archive.
     #[oai(path = "/v1/messagelog/archive", method = "post")]
     pub async fn archive_logs(&self, state: Data<&AppState>) -> Json<ArchiveResponse> {
-        let archive_dir =
-            std::env::var("XROAD_ARCHIVE_DIR").unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
-        let archiver =
-            messagelog::MessageLogArchiver::new((*state.message_log).clone(), archive_dir)
-                .with_max_records(100);
+        let archive_dir = std::env::var("XROAD_ARCHIVE_DIR")
+            .unwrap_or_else(|_| "/tmp/xroad/archive".to_string());
+        let archiver = messagelog::MessageLogArchiver::new(
+            (*state.message_log).clone(),
+            archive_dir,
+        )
+        .with_max_records(100);
 
         match archiver.archive_batch().await {
             Ok(Some(info)) => Json(ArchiveResponse {

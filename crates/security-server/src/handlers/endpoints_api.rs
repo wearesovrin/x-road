@@ -1,10 +1,12 @@
 use identifiers::ClientId;
 use poem::web::Data;
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 use sea_orm::EntityTrait;
 
+use super::dto::{
+    AddEndpointReq, AddGroupMemberReq, EndpointDto, SimpleSuccessResponse, UpdateEndpointReq,
+};
 use super::{ApiTags, AppState};
-use super::dto::{AddEndpointReq, AddGroupMemberReq, EndpointDto, SimpleSuccessResponse};
 
 pub struct EndpointsApi;
 
@@ -98,6 +100,32 @@ impl EndpointsApi {
             service_code: ep.service_code,
             method: ep.method,
             path: ep.path,
+            generated: ep.generated,
+        }))
+    }
+
+    /// Updates an endpoint by ID.
+    #[oai(path = "/v1/endpoints/:id", method = "patch")]
+    pub async fn update_endpoint(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+        body: Json<UpdateEndpointReq>,
+    ) -> poem::Result<Json<EndpointDto>> {
+        let ep = state
+            .server_conf
+            .get_endpoint(id.0)
+            .await
+            .map_err(poem::error::InternalServerError)?
+            .ok_or_else(|| {
+                poem::Error::from_string("Endpoint not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
+
+        Ok(Json(EndpointDto {
+            id: ep.id,
+            service_code: ep.service_code,
+            method: body.0.method.unwrap_or(ep.method),
+            path: body.0.path.unwrap_or(ep.path),
             generated: ep.generated,
         }))
     }

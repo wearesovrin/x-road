@@ -1,18 +1,15 @@
-use base64::Engine;
-use poem::web::Data;
-use poem_openapi::{OpenApi, param::Path, payload::Json};
-
-use super::{ApiTags, AppState};
-use super::dto::{
-    CsrDto, GenerateCsrReq, GenerateKeyReq, ImportCertReq, KeyDto, SimpleSuccessResponse, TokenDto,
-    TokenLoginReq, TokenPinReq,
+use crate::handlers::dto::{
+    GenerateKeyReq, KeyDto, KeyWithCsrsReq, SimpleSuccessResponse, TokenDto, TokenLoginReq,
+    TokenPinReq, UpdateTokenReq,
 };
+use crate::handlers::{ApiTags, AppState};
+use poem::web::Data;
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
 pub struct TokensApi;
 
 #[OpenApi(tag = "ApiTags::Tokens")]
 impl TokensApi {
-    /// Lists cryptographic tokens (software and hardware tokens).
     #[oai(path = "/v1/tokens", method = "get")]
     pub async fn list_tokens(&self, state: Data<&AppState>) -> Json<Vec<TokenDto>> {
         let tokens = state.signer.list_tokens().await;
@@ -24,12 +21,61 @@ impl TokensApi {
                 token_type: t.token_type.to_string(),
                 logged_in: t.logged_in,
                 has_pin: t.has_pin,
+                possible_actions: vec!["LOGIN".to_string(), "LOGOUT".to_string()],
             })
             .collect();
         Json(dtos)
     }
 
-    /// Logs into a token with PIN.
+    #[oai(path = "/v1/tokens/:id", method = "get")]
+    pub async fn get_token(
+        &self,
+        state: Data<&AppState>,
+        id: Path<String>,
+    ) -> poem::Result<Json<TokenDto>> {
+        let tokens = state.signer.list_tokens().await;
+        let t = tokens
+            .into_iter()
+            .find(|tok| tok.id == id.0)
+            .ok_or_else(|| {
+                poem::Error::from_string("Token not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
+        Ok(Json(TokenDto {
+            id: t.id,
+            name: t.name,
+            token_type: t.token_type.to_string(),
+            logged_in: t.logged_in,
+            has_pin: t.has_pin,
+            possible_actions: vec!["LOGIN".to_string(), "LOGOUT".to_string()],
+        }))
+    }
+
+    #[oai(path = "/v1/tokens/:id", method = "delete")]
+    pub async fn delete_token(
+        &self,
+        _state: Data<&AppState>,
+        _id: Path<String>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/tokens/:id", method = "patch")]
+    pub async fn update_token(
+        &self,
+        _state: Data<&AppState>,
+        id: Path<String>,
+        body: Json<UpdateTokenReq>,
+    ) -> Json<TokenDto> {
+        Json(TokenDto {
+            id: id.0,
+            name: body.0.name,
+            token_type: "SoftwareToken".to_string(),
+            logged_in: true,
+            has_pin: true,
+            possible_actions: vec!["LOGOUT".to_string()],
+        })
+    }
+
     #[oai(path = "/v1/tokens/:id/login", method = "put")]
     pub async fn login_token(
         &self,
@@ -50,7 +96,6 @@ impl TokensApi {
         }
     }
 
-    /// Logs out of a token.
     #[oai(path = "/v1/tokens/:id/logout", method = "put")]
     pub async fn logout_token(
         &self,
@@ -69,7 +114,6 @@ impl TokensApi {
         }))
     }
 
-    /// Updates PIN for a token.
     #[oai(path = "/v1/tokens/:id/pin", method = "put")]
     pub async fn update_token_pin(
         &self,
@@ -89,7 +133,6 @@ impl TokensApi {
         }))
     }
 
-    /// Generates a new cryptographic key on a token.
     #[oai(path = "/v1/tokens/:id/keys", method = "post")]
     pub async fn generate_token_key(
         &self,
@@ -112,110 +155,33 @@ impl TokensApi {
             available: key_info.available,
             public_key: key_info.public_key,
             sign_mechanism: key_info.sign_mechanism_name,
+            possible_actions: vec!["DELETE".to_string()],
         }))
     }
 
-    /// Lists all managed cryptographic keys.
-    #[oai(path = "/v1/keys", method = "get")]
-    pub async fn list_keys(&self, state: Data<&AppState>) -> Json<Vec<KeyDto>> {
-        let keys = state.signer.list_keys().await;
-        let dtos = keys
-            .into_iter()
-            .map(|k| KeyDto {
-                id: k.id,
-                label: k.label,
-                friendly_name: k.friendly_name,
-                usage: k.usage,
-                available: k.available,
-                public_key: k.public_key,
-                sign_mechanism: k.sign_mechanism_name,
-            })
-            .collect();
-        Json(dtos)
-    }
-
-    /// Gets key details by ID.
-    #[oai(path = "/v1/keys/:id", method = "get")]
-    pub async fn get_key(
+    #[oai(path = "/v1/tokens/:id/keys-with-csrs", method = "post")]
+    pub async fn add_key_and_csr(
         &self,
         state: Data<&AppState>,
         id: Path<String>,
+        body: Json<KeyWithCsrsReq>,
     ) -> poem::Result<Json<KeyDto>> {
-        let k = state.signer.get_key(&id.0).await.ok_or_else(|| {
-            poem::Error::from_string("Key not found", poem::http::StatusCode::NOT_FOUND)
-        })?;
+        let usage = proto::KeyUsageInfo::Signing;
+        let key_info = state
+            .signer
+            .generate_software_key(&id.0, &body.0.label, usage)
+            .await
+            .map_err(poem::error::InternalServerError)?;
 
         Ok(Json(KeyDto {
-            id: k.id,
-            label: k.label,
-            friendly_name: k.friendly_name,
-            usage: k.usage,
-            available: k.available,
-            public_key: k.public_key,
-            sign_mechanism: k.sign_mechanism_name,
-        }))
-    }
-
-    /// Deletes a key by ID.
-    #[oai(path = "/v1/keys/:id", method = "delete")]
-    pub async fn delete_key(
-        &self,
-        state: Data<&AppState>,
-        id: Path<String>,
-    ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        state
-            .signer
-            .delete_key(&id.0)
-            .await
-            .map_err(poem::error::InternalServerError)?;
-
-        Ok(Json(SimpleSuccessResponse {
-            success: true,
-            message: format!("Key {} deleted", id.0),
-        }))
-    }
-
-    /// Generates a CSR for a key.
-    #[oai(path = "/v1/keys/:id/csrs", method = "post")]
-    pub async fn generate_csr(
-        &self,
-        state: Data<&AppState>,
-        id: Path<String>,
-        body: Json<GenerateCsrReq>,
-    ) -> poem::Result<Json<CsrDto>> {
-        let csr_pem = state
-            .signer
-            .generate_csr(&id.0, &body.subject_cn)
-            .await
-            .map_err(poem::error::InternalServerError)?;
-
-        Ok(Json(CsrDto {
-            id: format!("csr-{}", uuid::Uuid::new_v4()),
-            csr_pem,
-            subject_name: body.subject_cn.clone(),
-        }))
-    }
-
-    /// Imports a certificate for a key.
-    #[oai(path = "/v1/token-certificates", method = "post")]
-    pub async fn import_certificate(
-        &self,
-        state: Data<&AppState>,
-        body: Json<ImportCertReq>,
-    ) -> poem::Result<Json<SimpleSuccessResponse>> {
-        let der = base64::engine::general_purpose::STANDARD
-            .decode(&body.cert_der_base64)
-            .map_err(poem::error::BadRequest)?;
-
-        state
-            .signer
-            .add_certificate(&body.key_id, der)
-            .await
-            .map_err(poem::error::InternalServerError)?;
-
-        Ok(Json(SimpleSuccessResponse {
-            success: true,
-            message: "Certificate successfully imported".to_string(),
+            id: key_info.id,
+            label: key_info.label,
+            friendly_name: key_info.friendly_name,
+            usage: key_info.usage,
+            available: key_info.available,
+            public_key: key_info.public_key,
+            sign_mechanism: key_info.sign_mechanism_name,
+            possible_actions: vec!["DELETE".to_string()],
         }))
     }
 }

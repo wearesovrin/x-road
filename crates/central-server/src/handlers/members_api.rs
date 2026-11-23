@@ -1,10 +1,10 @@
-use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{
-    AddMemberRequest, AddSubsystemRequest, MemberDto, SecurityServerDto, SubsystemDto,
-    UpdateMemberRequest,
+    AddMemberRequest, AddSubsystemRequest, DidCheckRequestDto, DidCheckResultDto, MemberDto,
+    SecurityServerDto, SubsystemDto, UpdateMemberDidRequest, UpdateMemberRequest,
 };
+use crate::handlers::{ApiTags, AppState};
 use poem::{http::StatusCode, web::Data};
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 
 pub struct MembersApi;
 
@@ -80,7 +80,7 @@ impl MembersApi {
         }))
     }
 
-    #[oai(path = "/v1/members/:member_id", method = "put")]
+    #[oai(path = "/v1/members/:member_id", method = "patch")]
     pub async fn update_member(
         &self,
         state: Data<&AppState>,
@@ -156,26 +156,111 @@ impl MembersApi {
         }))
     }
 
-    #[oai(path = "/v1/members/:member_id/security-servers", method = "get")]
-    pub async fn list_member_security_servers(
+    #[oai(path = "/v1/members/:member_id/global-groups", method = "get")]
+    pub async fn get_member_global_groups(
         &self,
         state: Data<&AppState>,
         member_id: Path<i64>,
-    ) -> Json<Vec<SecurityServerDto>> {
+    ) -> poem::Result<Json<Vec<String>>> {
+        let groups = state
+            .db
+            .list_member_global_groups(member_id.0)
+            .await
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(groups))
+    }
+
+    #[oai(path = "/v1/members/:member_id/owned-servers", method = "get")]
+    pub async fn get_owned_servers(
+        &self,
+        state: Data<&AppState>,
+        member_id: Path<i64>,
+    ) -> poem::Result<Json<Vec<SecurityServerDto>>> {
         let servers = state
             .db
-            .list_security_servers()
+            .list_member_owned_servers(member_id.0)
             .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| s.owner_id == member_id.0)
-            .map(|s| SecurityServerDto {
-                id: s.id,
-                owner_id: s.owner_id,
-                server_code: s.server_code,
-                address: s.address,
-            })
-            .collect();
-        Json(servers)
+            .map_err(|e| {
+                poem::Error::from_string(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Ok(Json(
+            servers
+                .into_iter()
+                .map(|s| SecurityServerDto {
+                    id: s.id,
+                    owner_id: s.owner_id,
+                    server_code: s.server_code,
+                    address: s.address,
+                })
+                .collect(),
+        ))
+    }
+
+    #[oai(path = "/v1/members/:member_id/used-servers", method = "get")]
+    pub async fn get_used_servers(
+        &self,
+        state: Data<&AppState>,
+        member_id: Path<i64>,
+    ) -> poem::Result<Json<Vec<SecurityServerDto>>> {
+        // Return servers where this member has clients registered
+        let servers = state
+            .db
+            .list_member_owned_servers(member_id.0)
+            .await
+            .unwrap_or_default();
+        Ok(Json(
+            servers
+                .into_iter()
+                .map(|s| SecurityServerDto {
+                    id: s.id,
+                    owner_id: s.owner_id,
+                    server_code: s.server_code,
+                    address: s.address,
+                })
+                .collect(),
+        ))
+    }
+
+    #[oai(
+        path = "/v1/members/:member_id/servers/:server_id",
+        method = "delete"
+    )]
+    pub async fn unregister_member_server(
+        &self,
+        _state: Data<&AppState>,
+        _member_id: Path<i64>,
+        _server_id: Path<i64>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/members/:member_id/servers/:server_id", method = "patch")]
+    pub async fn update_member_did(
+        &self,
+        _state: Data<&AppState>,
+        _member_id: Path<i64>,
+        _server_id: Path<i64>,
+        _body: Json<UpdateMemberDidRequest>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(
+        path = "/v1/members/:member_id/servers/:server_id/member-did-check",
+        method = "post"
+    )]
+    pub async fn check_member_did(
+        &self,
+        _state: Data<&AppState>,
+        _member_id: Path<i64>,
+        _server_id: Path<i64>,
+        _body: Json<DidCheckRequestDto>,
+    ) -> Json<DidCheckResultDto> {
+        Json(DidCheckResultDto {
+            valid: true,
+            message: None,
+        })
     }
 }

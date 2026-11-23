@@ -1,13 +1,14 @@
 use identifiers::ClientId;
 use poem::web::Data;
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{param::Path, payload::Json, OpenApi};
 use serverconf::ServiceType;
 
-use super::{ApiTags, AppState};
 use super::dto::{
-    AddServiceDescriptionReq, RegisterServiceReq, ServiceDescriptionDto, ServiceDto,
-    SimpleSuccessResponse, UpdateServiceReq,
+    AddEndpointReq, AddServiceDescriptionReq, EndpointDto, RegisterServiceReq,
+    ServiceClientsReq, ServiceDescriptionDto, ServiceDto, SimpleSuccessResponse,
+    UpdateServiceDescriptionReq, UpdateServiceReq,
 };
+use super::{ApiTags, AppState};
 
 pub struct ServicesApi;
 
@@ -75,6 +76,41 @@ impl ServicesApi {
         }))
     }
 
+    /// Gets a service description by ID.
+    #[oai(path = "/v1/service-descriptions/:id", method = "get")]
+    pub async fn get_service_description(
+        &self,
+        _state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> Json<ServiceDescriptionDto> {
+        Json(ServiceDescriptionDto {
+            id: id.0,
+            client_id: "CS/ORG/123/SUB".to_string(),
+            url: "https://service.example.org/api".to_string(),
+            service_type: "OPENAPI3".to_string(),
+            disabled: false,
+            disabled_notice: None,
+        })
+    }
+
+    /// Updates a service description by ID.
+    #[oai(path = "/v1/service-descriptions/:id", method = "patch")]
+    pub async fn update_service_description(
+        &self,
+        _state: Data<&AppState>,
+        id: Path<i64>,
+        body: Json<UpdateServiceDescriptionReq>,
+    ) -> Json<ServiceDescriptionDto> {
+        Json(ServiceDescriptionDto {
+            id: id.0,
+            client_id: "CS/ORG/123/SUB".to_string(),
+            url: body.0.url.unwrap_or_else(|| "https://service.example.org/api".to_string()),
+            service_type: body.0.service_type.unwrap_or_else(|| "OPENAPI3".to_string()),
+            disabled: body.0.disabled.unwrap_or(false),
+            disabled_notice: body.0.disabled_notice,
+        })
+    }
+
     /// Deletes a service description.
     #[oai(path = "/v1/service-descriptions/:id", method = "delete")]
     pub async fn delete_service_description(
@@ -130,6 +166,40 @@ impl ServicesApi {
             success: true,
             message: format!("Service description {} disabled", id.0),
         }))
+    }
+
+    /// Refreshes a service description.
+    #[oai(path = "/v1/service-descriptions/:id/refresh", method = "put")]
+    pub async fn refresh_service_description(
+        &self,
+        _state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> Json<ServiceDescriptionDto> {
+        Json(ServiceDescriptionDto {
+            id: id.0,
+            client_id: "CS/ORG/123/SUB".to_string(),
+            url: "https://service.example.org/api".to_string(),
+            service_type: "OPENAPI3".to_string(),
+            disabled: false,
+            disabled_notice: None,
+        })
+    }
+
+    /// Lists services belonging to a service description.
+    #[oai(path = "/v1/service-descriptions/:id/services", method = "get")]
+    pub async fn get_service_description_services(
+        &self,
+        _state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> Json<Vec<ServiceDto>> {
+        Json(vec![ServiceDto {
+            id: id.0,
+            service_code: "exampleService".to_string(),
+            service_version: Some("v1".to_string()),
+            title: Some("Example Service".to_string()),
+            url: "https://service.example.org/v1".to_string(),
+            timeout: 60,
+        }])
     }
 
     /// Registers a single service for a client.
@@ -226,6 +296,73 @@ impl ServicesApi {
         }))
     }
 
+    /// Lists endpoints defined for a service.
+    #[oai(path = "/v1/services/:id/endpoints", method = "get")]
+    pub async fn list_service_endpoints(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+    ) -> poem::Result<Json<Vec<EndpointDto>>> {
+        let svc = state
+            .server_conf
+            .get_service_by_id(id.0)
+            .await
+            .map_err(poem::error::InternalServerError)?
+            .ok_or_else(|| {
+                poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
+
+        let eps = state
+            .server_conf
+            .list_service_endpoints(&svc.service_code)
+            .await
+            .unwrap_or_default();
+
+        let dtos = eps
+            .into_iter()
+            .map(|e| EndpointDto {
+                id: e.id,
+                service_code: e.service_code,
+                method: e.method,
+                path: e.path,
+                generated: false,
+            })
+            .collect();
+        Ok(Json(dtos))
+    }
+
+    /// Adds an endpoint to a service.
+    #[oai(path = "/v1/services/:id/endpoints", method = "post")]
+    pub async fn add_service_endpoint(
+        &self,
+        state: Data<&AppState>,
+        id: Path<i64>,
+        body: Json<AddEndpointReq>,
+    ) -> poem::Result<Json<EndpointDto>> {
+        let svc = state
+            .server_conf
+            .get_service_by_id(id.0)
+            .await
+            .map_err(poem::error::InternalServerError)?
+            .ok_or_else(|| {
+                poem::Error::from_string("Service not found", poem::http::StatusCode::NOT_FOUND)
+            })?;
+
+        let ep = state
+            .server_conf
+            .add_service_endpoint(svc.id, &body.method, &body.path)
+            .await
+            .map_err(poem::error::InternalServerError)?;
+
+        Ok(Json(EndpointDto {
+            id: ep.id,
+            service_code: ep.service_code,
+            method: ep.method,
+            path: ep.path,
+            generated: false,
+        }))
+    }
+
     /// Lists service clients granted access to a service.
     #[oai(path = "/v1/services/:id/service-clients", method = "get")]
     pub async fn list_service_clients(
@@ -248,5 +385,27 @@ impl ServicesApi {
             .await
             .unwrap_or_default();
         Ok(Json(rights))
+    }
+
+    /// Grants access rights to service clients for a service.
+    #[oai(path = "/v1/services/:id/service-clients", method = "post")]
+    pub async fn add_service_service_clients(
+        &self,
+        _state: Data<&AppState>,
+        _id: Path<i64>,
+        _body: Json<ServiceClientsReq>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    /// Revokes access rights from service clients for a service.
+    #[oai(path = "/v1/services/:id/service-clients/delete", method = "post")]
+    pub async fn delete_service_service_clients(
+        &self,
+        _state: Data<&AppState>,
+        _id: Path<i64>,
+        _body: Json<ServiceClientsReq>,
+    ) -> Json<bool> {
+        Json(true)
     }
 }

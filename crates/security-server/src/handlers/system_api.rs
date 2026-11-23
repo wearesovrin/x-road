@@ -1,14 +1,16 @@
 use poem::web::Data;
 use poem_openapi::{
+    payload::{Attachment, Json, PlainText},
     OpenApi,
-    payload::{Json, PlainText},
 };
 
-use super::{ApiTags, AppState};
 use super::dto::{
-    DiagnosticsGlobalConf, DiagnosticsOcsp, DiagnosticsTsa, MaintenanceModeResponse,
+    AuthProviderTypeDto, CertificateDetailsDto, MailNotificationStatusDto,
+    MaintenanceModeResponse, NodeTypeDto, PrioritizationStrategyDto, SendTestMailReq,
     ServerAddressReq, ServerAddressResponse, ServerStatus, SimpleSuccessResponse, SystemVersion,
+    TimestampingServiceConfigDto,
 };
+use super::{ApiTags, AppState};
 
 pub struct SystemApi;
 
@@ -115,50 +117,223 @@ impl SystemApi {
         })
     }
 
-    /// Queries Global Configuration diagnostics.
-    #[oai(path = "/v1/diagnostics/globalconf", method = "get")]
-    pub async fn get_globalconf_diagnostics(
-        &self,
-        state: Data<&AppState>,
-    ) -> Json<DiagnosticsGlobalConf> {
-        let gc = &state.global_conf;
-        Json(DiagnosticsGlobalConf {
-            instance_identifier: gc.instance_identifier.clone(),
-            status: "OK".to_string(),
-            members_count: gc.members.len(),
-            security_servers_count: gc.security_servers.len(),
-            approved_cas_count: gc.approved_cas.len(),
-            approved_tsps_count: gc.approved_tsps.len(),
+    #[oai(path = "/v1/system/node-type", method = "get")]
+    pub async fn get_node_type(&self) -> Json<NodeTypeDto> {
+        Json(NodeTypeDto {
+            node_type: "STANDALONE".to_string(),
         })
     }
 
-    /// Queries Approved Time-Stamping Authorities diagnostics.
-    #[oai(path = "/v1/diagnostics/timestamping-services", method = "get")]
-    pub async fn get_tsa_diagnostics(&self, state: Data<&AppState>) -> Json<Vec<DiagnosticsTsa>> {
-        let tsas = &state.global_conf.approved_tsps;
-        let dtos = tsas
-            .iter()
-            .map(|t| DiagnosticsTsa {
-                name: t.name.clone(),
-                url: t.url.clone(),
-                status: "OK".to_string(),
-            })
-            .collect();
-        Json(dtos)
+    #[oai(path = "/v1/system/auth-provider-type", method = "get")]
+    pub async fn get_auth_provider_type(&self) -> Json<AuthProviderTypeDto> {
+        Json(AuthProviderTypeDto {
+            auth_provider_type: "INTERNAL".to_string(),
+        })
     }
 
-    /// Queries OCSP Responders diagnostics.
-    #[oai(path = "/v1/diagnostics/ocsp-responders", method = "get")]
-    pub async fn get_ocsp_diagnostics(&self, state: Data<&AppState>) -> Json<Vec<DiagnosticsOcsp>> {
-        let cas = &state.global_conf.approved_cas;
-        let dtos = cas
-            .iter()
-            .map(|ca| DiagnosticsOcsp {
-                ca_name: ca.name.clone(),
-                url: format!("http://ocsp.{}.x-road.local", ca.name.to_lowercase()),
-                status: "OK".to_string(),
-            })
-            .collect();
-        Json(dtos)
+    #[oai(path = "/v1/system/anchor", method = "get")]
+    pub async fn get_anchor(&self, _state: Data<&AppState>) -> Attachment<Vec<u8>> {
+        let xml = "<anchor><instance>CS</instance></anchor>";
+        Attachment::new(xml.as_bytes().to_vec()).filename("configuration_anchor.xml")
+    }
+
+    #[oai(path = "/v1/system/anchor", method = "post")]
+    pub async fn upload_initial_anchor(&self, _state: Data<&AppState>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/system/anchor", method = "put")]
+    pub async fn replace_anchor(&self, _state: Data<&AppState>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/system/anchor/previews", method = "post")]
+    pub async fn preview_anchor(&self, _state: Data<&AppState>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/system/anchor/download", method = "get")]
+    pub async fn download_anchor(&self, _state: Data<&AppState>) -> Attachment<Vec<u8>> {
+        let xml = "<anchor><instance>CS</instance></anchor>";
+        Attachment::new(xml.as_bytes().to_vec()).filename("configuration_anchor.xml")
+    }
+
+    #[oai(path = "/v1/system/certificate", method = "get")]
+    pub async fn get_system_certificate(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<CertificateDetailsDto> {
+        Json(CertificateDetailsDto {
+            hash: "system-cert-hash".to_string(),
+            issuer_distinguished_name: "CN=Security Server Internal CA".to_string(),
+            subject_distinguished_name: "CN=Security Server Internal TLS".to_string(),
+            not_before: "2020-01-01T00:00:00Z".to_string(),
+            not_after: "2030-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/system/certificate", method = "post")]
+    pub async fn generate_system_certificate(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<CertificateDetailsDto> {
+        Json(CertificateDetailsDto {
+            hash: "new-system-cert-hash".to_string(),
+            issuer_distinguished_name: "CN=Security Server Internal CA".to_string(),
+            subject_distinguished_name: "CN=Security Server Internal TLS".to_string(),
+            not_before: "2020-01-01T00:00:00Z".to_string(),
+            not_after: "2030-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/system/certificate/export", method = "get")]
+    pub async fn download_system_certificate(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Attachment<Vec<u8>> {
+        let cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----";
+        Attachment::new(cert.as_bytes().to_vec()).filename("internal.crt")
+    }
+
+    #[oai(path = "/v1/system/certificate/csr", method = "post")]
+    pub async fn generate_system_certificate_request(
+        &self,
+        _state: Data<&AppState>,
+    ) -> PlainText<String> {
+        PlainText("-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----".to_string())
+    }
+
+    #[oai(path = "/v1/system/certificate/import", method = "post")]
+    pub async fn import_system_certificate(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<CertificateDetailsDto> {
+        Json(CertificateDetailsDto {
+            hash: "imported-system-cert-hash".to_string(),
+            issuer_distinguished_name: "CN=Internal CA".to_string(),
+            subject_distinguished_name: "CN=Internal TLS".to_string(),
+            not_before: "2020-01-01T00:00:00Z".to_string(),
+            not_after: "2030-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/system/external-rpc-ca", method = "get")]
+    pub async fn get_external_rpc_ca(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<CertificateDetailsDto> {
+        Json(CertificateDetailsDto {
+            hash: "rpc-ca-hash".to_string(),
+            issuer_distinguished_name: "CN=External RPC CA".to_string(),
+            subject_distinguished_name: "CN=External RPC".to_string(),
+            not_before: "2020-01-01T00:00:00Z".to_string(),
+            not_after: "2030-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/system/external-rpc-ca/download", method = "get")]
+    pub async fn download_external_rpc_ca(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Attachment<Vec<u8>> {
+        let cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----";
+        Attachment::new(cert.as_bytes().to_vec()).filename("external-rpc-ca.crt")
+    }
+
+    #[oai(path = "/v1/system/op-monitor-ca", method = "get")]
+    pub async fn get_op_monitor_ca(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<CertificateDetailsDto> {
+        Json(CertificateDetailsDto {
+            hash: "opmon-ca-hash".to_string(),
+            issuer_distinguished_name: "CN=OpMon CA".to_string(),
+            subject_distinguished_name: "CN=OpMon".to_string(),
+            not_before: "2020-01-01T00:00:00Z".to_string(),
+            not_after: "2030-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/system/op-monitor-ca", method = "post")]
+    pub async fn upload_op_monitor_ca(&self, _state: Data<&AppState>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/system/op-monitor-ca", method = "delete")]
+    pub async fn delete_op_monitor_ca(&self, _state: Data<&AppState>) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(path = "/v1/system/timestamping-services", method = "get")]
+    pub async fn get_configured_timestamping_services(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<Vec<TimestampingServiceConfigDto>> {
+        Json(vec![TimestampingServiceConfigDto {
+            name: "TSA 1".to_string(),
+            url: "http://tsa.example.org".to_string(),
+        }])
+    }
+
+    #[oai(path = "/v1/system/timestamping-services", method = "post")]
+    pub async fn add_configured_timestamping_service(
+        &self,
+        _state: Data<&AppState>,
+        body: Json<TimestampingServiceConfigDto>,
+    ) -> Json<TimestampingServiceConfigDto> {
+        body
+    }
+
+    #[oai(path = "/v1/system/timestamping-services/delete", method = "post")]
+    pub async fn delete_configured_timestamping_service(
+        &self,
+        _state: Data<&AppState>,
+        _body: Json<TimestampingServiceConfigDto>,
+    ) -> Json<bool> {
+        Json(true)
+    }
+
+    #[oai(
+        path = "/v1/system/timestamping-services/prioritization-strategy",
+        method = "get"
+    )]
+    pub async fn get_timestamping_prioritization_strategy(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<PrioritizationStrategyDto> {
+        Json(PrioritizationStrategyDto {
+            strategy: "ROUND_ROBIN".to_string(),
+        })
+    }
+
+    #[oai(path = "/v1/timestamping-services", method = "get")]
+    pub async fn get_approved_timestamping_services(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<Vec<TimestampingServiceConfigDto>> {
+        Json(vec![TimestampingServiceConfigDto {
+            name: "Approved TSA".to_string(),
+            url: "http://tsa.example.org".to_string(),
+        }])
+    }
+
+    #[oai(path = "/v1/mail/mail-notification-status", method = "get")]
+    pub async fn get_mail_notification_status(
+        &self,
+        _state: Data<&AppState>,
+    ) -> Json<MailNotificationStatusDto> {
+        Json(MailNotificationStatusDto {
+            is_configured: true,
+            mail_from: Some("no-reply@security-server.example".to_string()),
+        })
+    }
+
+    #[oai(path = "/v1/mail/send-test-mail", method = "put")]
+    pub async fn send_test_mail(
+        &self,
+        _state: Data<&AppState>,
+        _body: Json<SendTestMailReq>,
+    ) -> Json<bool> {
+        Json(true)
     }
 }
