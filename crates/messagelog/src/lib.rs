@@ -1,6 +1,5 @@
 pub mod archiver;
-pub mod entities;
-pub mod migration;
+pub mod database;
 pub mod services;
 pub mod timestamp;
 
@@ -8,7 +7,10 @@ use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha512};
 
 pub use archiver::{ArchiveInfo, ArchiveVerificationResult, MessageLogArchiver, verify_archive};
-pub use migration::Migrator;
+pub use database::Migrator;
+pub use database::entities;
+pub use database::migrations;
+pub use database::migrations as migration;
 pub use services::{
     AttachmentService, HashChainService, LogService, MessageLog, MessageLogDb, NewLogRecord,
 };

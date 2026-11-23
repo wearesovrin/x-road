@@ -1,12 +1,14 @@
-pub mod entities;
+pub mod database;
 pub mod handlers;
 pub mod middleware;
-pub mod migration;
 pub mod services;
 
+pub use database::Migrator;
+pub use database::entities;
+pub use database::migrations;
+pub use database::migrations as migration;
 pub use handlers::*;
 pub use middleware::{CentralServerAuthEndpoint, CentralServerAuthMiddleware, init_tracer};
-pub use migration::Migrator;
 pub use services::{CentralServerDb, CentralServerServices, ClientItem};
 
 use poem::Server;

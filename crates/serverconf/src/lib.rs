@@ -1,5 +1,4 @@
-pub mod entities;
-pub mod migration;
+pub mod database;
 pub mod services;
 
 use common::XRoadResult;
@@ -8,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 pub use common::ServiceType;
-pub use migration::Migrator;
+pub use database::Migrator;
+pub use database::entities;
+pub use database::migrations;
+pub use database::migrations as migration;
 pub use services::{
     AccessRightService, ApiKeyService, CertificateService, ClientService, DatabaseServerConf,
     EndpointService, LocalGroupService, ServerConf, ServiceService,
