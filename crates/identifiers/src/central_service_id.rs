@@ -1,7 +1,7 @@
 use crate::id_trait::XRoadId;
 use crate::object_type::XRoadObjectType;
 use crate::validator::StrictIdentifierValidator;
-use common::{XRoadError, XRoadResult};
+use common::{ServiceCode, XRoadError, XRoadResult};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -12,15 +12,18 @@ pub struct CentralServiceId {
     #[serde(rename = "xRoadInstance", alias = "xroad_instance")]
     pub xroad_instance: String,
     #[serde(rename = "serviceCode", alias = "service_code")]
-    pub service_code: String,
+    pub service_code: ServiceCode,
 }
 
 impl CentralServiceId {
-    pub fn new(instance: impl Into<String>, service_code: impl Into<String>) -> XRoadResult<Self> {
+    pub fn new(
+        instance: impl Into<String>,
+        service_code: impl Into<ServiceCode>,
+    ) -> XRoadResult<Self> {
         let instance = instance.into();
         let code = service_code.into();
         StrictIdentifierValidator::validate_part("xRoadInstance", &instance)?;
-        StrictIdentifierValidator::validate_part("serviceCode", &code)?;
+        StrictIdentifierValidator::validate_part("serviceCode", code.as_str())?;
         Ok(Self {
             xroad_instance: instance,
             service_code: code,
@@ -38,7 +41,7 @@ impl XRoadId for CentralServiceId {
     }
 
     fn fields_for_string_format(&self) -> Vec<&str> {
-        vec![&self.service_code]
+        vec![self.service_code.as_str()]
     }
 }
 

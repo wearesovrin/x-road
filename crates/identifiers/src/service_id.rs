@@ -2,7 +2,7 @@ use crate::client_id::ClientId;
 use crate::id_trait::XRoadId;
 use crate::object_type::XRoadObjectType;
 use crate::validator::StrictIdentifierValidator;
-use common::{XRoadError, XRoadResult};
+use common::{MetaServiceCode, ServiceCode, XRoadError, XRoadResult};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -12,7 +12,7 @@ use std::str::FromStr;
 pub struct ServiceId {
     pub client: ClientId,
     #[serde(rename = "serviceCode", alias = "service_code")]
-    pub service_code: String,
+    pub service_code: ServiceCode,
     #[serde(
         rename = "serviceVersion",
         alias = "service_version",
@@ -25,13 +25,13 @@ impl ServiceId {
     /// Creates a validated ServiceId for the given client provider, service code, and optional version.
     pub fn new(
         client: ClientId,
-        service_code: impl Into<String>,
+        service_code: impl Into<ServiceCode>,
         service_version: Option<impl Into<String>>,
     ) -> XRoadResult<Self> {
         let code = service_code.into();
         let version = service_version.map(Into::into);
 
-        StrictIdentifierValidator::validate_part("serviceCode", &code)?;
+        StrictIdentifierValidator::validate_part("serviceCode", code.as_str())?;
         StrictIdentifierValidator::validate_optional_part("serviceVersion", version.as_deref())?;
 
         Ok(Self {
@@ -44,7 +44,7 @@ impl ServiceId {
     /// Creates an unchecked ServiceId without validation.
     pub fn new_unchecked(
         client: ClientId,
-        service_code: impl Into<String>,
+        service_code: impl Into<ServiceCode>,
         service_version: Option<impl Into<String>>,
     ) -> Self {
         Self {
@@ -60,7 +60,7 @@ impl ServiceId {
         class: impl Into<String>,
         code: impl Into<String>,
         subsystem: Option<impl Into<String>>,
-        service_code: impl Into<String>,
+        service_code: impl Into<ServiceCode>,
         service_version: Option<impl Into<String>>,
     ) -> XRoadResult<Self> {
         let client = ClientId::new(instance, class, code, subsystem)?;
@@ -94,7 +94,22 @@ impl ServiceId {
 
     #[inline]
     pub fn service_code(&self) -> &str {
+        self.service_code.as_str()
+    }
+
+    #[inline]
+    pub fn service_code_enum(&self) -> &ServiceCode {
         &self.service_code
+    }
+
+    #[inline]
+    pub fn is_meta_service(&self) -> bool {
+        self.service_code.is_meta_service()
+    }
+
+    #[inline]
+    pub fn as_meta_service(&self) -> Option<MetaServiceCode> {
+        self.service_code.as_meta_service()
     }
 
     #[inline]

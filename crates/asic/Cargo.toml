@@ -10,6 +10,7 @@ repository.workspace = true
 common.workspace = true
 zip.workspace = true
 quick-xml = { workspace = true, features = ["serialize"] }
+xml-sec.workspace = true
 serde.workspace = true
 sha2.workspace = true
 chrono.workspace = true

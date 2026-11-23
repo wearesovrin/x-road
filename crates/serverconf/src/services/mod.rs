@@ -392,7 +392,7 @@ impl ServerConfProvider for ServerConf {
 
     async fn get_service_url(&self, service_id: &ServiceId) -> XRoadResult<Option<String>> {
         let mut query = service_entity::Entity::find()
-            .filter(service_entity::Column::ServiceCode.eq(&service_id.service_code));
+            .filter(service_entity::Column::ServiceCode.eq(service_id.service_code.as_str()));
 
         if let Some(ref version) = service_id.service_version {
             query = query.filter(service_entity::Column::ServiceVersion.eq(Some(version.clone())));
