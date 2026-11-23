@@ -18,8 +18,8 @@ WORKDIR /usr/src/x-road
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-# Build release binaries for security-server and central-server
-RUN cargo build --release -p security-server -p central-server
+# Build release binaries for security-server, central-server, and x-road CLI
+RUN cargo build --release -p security-server -p central-server -p x-road -p asic
 
 # -----------------------------------------------------------------------------
 # Runtime stage for security-server
@@ -42,12 +42,17 @@ RUN chown -R xroad:xroad /etc/x-road
 USER xroad
 
 COPY --from=builder /usr/src/x-road/target/release/security-server /usr/local/bin/security-server
+COPY --from=builder /usr/src/x-road/target/release/x-road /usr/local/bin/x-road
+COPY --from=builder /usr/src/x-road/target/release/xroad-cli /usr/local/bin/xroad-cli
 
-# Expose Security Server REST Management API (4000) and proxy ports (8000, 8443)
-EXPOSE 4000 8000 8443
+# Expose Security Server REST Management API (4000), proxies (8000, 8443), and native mTLS (5500)
+EXPOSE 4000 8000 8443 5500
 
 ENV RUST_LOG=info \
-    BIND_ADDR=0.0.0.0:4000
+    ADMIN_BIND_ADDR=0.0.0.0:4000 \
+    CLIENT_PROXY_BIND_ADDR=0.0.0.0:8000 \
+    SERVER_PROXY_BIND_ADDR=0.0.0.0:8443 \
+    MTLS_BIND_ADDR=0.0.0.0:5500
 
 ENTRYPOINT ["/usr/local/bin/security-server"]
 

@@ -1,0 +1,85 @@
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Central Server: Instance management & Global Configuration distribution
+  # ---------------------------------------------------------------------------
+  central-server:
+    build:
+      context: .
+      target: central-server
+    image: xroad-central-server:local
+    container_name: xroad-central-server
+    ports:
+      - "4001:4001"
+      - "8081:80"
+    environment:
+      - RUST_LOG=info
+      - BIND_ADDR=0.0.0.0:4001
+      - XROAD_INSTANCE=DEV
+    networks:
+      - xroad-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/swagger-ui"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  # ---------------------------------------------------------------------------
+  # 2. Sample Provider Adapter Service (Python HTTP Service)
+  # ---------------------------------------------------------------------------
+  sample-service:
+    build:
+      context: ./examples/sample-service
+    image: xroad-sample-service:local
+    container_name: xroad-sample-service
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+    networks:
+      - xroad-net
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  # ---------------------------------------------------------------------------
+  # 3. Unified Security Server: Admin API, Client Proxy, Server Proxy, mTLS
+  # ---------------------------------------------------------------------------
+  security-server:
+    build:
+      context: .
+      target: security-server
+    image: xroad-security-server:local
+    container_name: xroad-security-server
+    depends_on:
+      central-server:
+        condition: service_healthy
+      sample-service:
+        condition: service_healthy
+    ports:
+      - "4000:4000"   # Admin API & Swagger UI
+      - "8000:8000"   # Client Proxy (outbound consumer gateway)
+      - "8443:8443"   # Server Proxy (inbound provider gateway)
+      - "5500:5500"   # Native mTLS port
+    environment:
+      - RUST_LOG=info
+      - ADMIN_BIND_ADDR=0.0.0.0:4000
+      - CLIENT_PROXY_BIND_ADDR=0.0.0.0:8000
+      - SERVER_PROXY_BIND_ADDR=0.0.0.0:8443
+      - MTLS_BIND_ADDR=0.0.0.0:5500
+      - DEFAULT_SERVER_PROXY_URL=http://sample-service:5000
+    networks:
+      - xroad-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/system/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+networks:
+  xroad-net:
+    driver: bridge
