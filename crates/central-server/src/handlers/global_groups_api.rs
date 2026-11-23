@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{AddGroupMemberRequest, CreateGlobalGroupRequest, GlobalGroupDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct GlobalGroupsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::GlobalGroups")]
 impl GlobalGroupsApi {
     #[oai(path = "/v1/global-groups", method = "get")]
     pub async fn list_global_groups(&self, state: Data<&AppState>) -> Json<Vec<GlobalGroupDto>> {

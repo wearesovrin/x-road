@@ -1,4 +1,4 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{AddCaRequest, ApprovedCaDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{
@@ -9,7 +9,7 @@ use poem_openapi::{
 
 pub struct CertificationServicesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::CertificationServices")]
 impl CertificationServicesApi {
     #[oai(path = "/v1/certification-services", method = "get")]
     pub async fn list_certification_services(

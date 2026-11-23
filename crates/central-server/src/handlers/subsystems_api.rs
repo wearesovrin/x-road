@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::SubsystemDto;
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct SubsystemsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Subsystems")]
 impl SubsystemsApi {
     #[oai(path = "/v1/subsystems", method = "get")]
     pub async fn list_all_subsystems(&self, state: Data<&AppState>) -> Json<Vec<SubsystemDto>> {

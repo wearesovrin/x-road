@@ -1,4 +1,4 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{
     AddMemberRequest, AddSubsystemRequest, MemberDto, SecurityServerDto, SubsystemDto,
     UpdateMemberRequest,
@@ -8,7 +8,7 @@ use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct MembersApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Members")]
 impl MembersApi {
     #[oai(path = "/v1/members", method = "get")]
     pub async fn list_members(&self, state: Data<&AppState>) -> Json<Vec<MemberDto>> {

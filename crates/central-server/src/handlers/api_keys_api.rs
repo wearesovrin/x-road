@@ -1,4 +1,4 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{
     ApiKeyDto, CreateApiKeyReq, UpdateApiKeyReq, ValidateApiKeyReq, ValidateApiKeyResp,
 };
@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 
 pub struct ApiKeysApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::ApiKeys")]
 impl ApiKeysApi {
     /// Creates a new API key with assigned roles. Returns plaintext key token.
     #[oai(path = "/v1/api-keys", method = "post")]

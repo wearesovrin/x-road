@@ -1,12 +1,12 @@
 use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{AcmeOrderReq, AcmeOrderResponse, ApprovedCaDto};
 
 pub struct CertificateAuthoritiesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::CertificateAuthorities")]
 impl CertificateAuthoritiesApi {
     /// Lists Approved Certification Authorities from Global Configuration.
     #[oai(path = "/v1/certificate-authorities", method = "get")]

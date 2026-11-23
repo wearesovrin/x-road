@@ -3,7 +3,7 @@ use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use serverconf::ServiceType;
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{
     AddServiceDescriptionReq, RegisterServiceReq, ServiceDescriptionDto, ServiceDto,
     SimpleSuccessResponse, UpdateServiceReq,
@@ -11,7 +11,7 @@ use super::dto::{
 
 pub struct ServicesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Services")]
 impl ServicesApi {
     /// Lists service descriptions for a client.
     #[oai(path = "/v1/clients/:id/service-descriptions", method = "get")]

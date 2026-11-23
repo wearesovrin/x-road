@@ -2,7 +2,7 @@ use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use sha2::{Digest, Sha256};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{
     ApiKeyDto, ApiKeyResponse, CreateApiKeyReq, UpdateApiKeyReq, ValidateApiKeyReq,
     ValidateApiKeyResponse,
@@ -10,7 +10,7 @@ use super::dto::{
 
 pub struct ApiKeysApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::ApiKeys")]
 impl ApiKeysApi {
     /// Creates an API key with assigned roles. Returns plaintext key token.
     #[oai(path = "/v1/api-keys", method = "post")]

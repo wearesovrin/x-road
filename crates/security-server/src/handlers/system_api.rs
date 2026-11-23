@@ -4,7 +4,7 @@ use poem_openapi::{
     payload::{Json, PlainText},
 };
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{
     DiagnosticsGlobalConf, DiagnosticsOcsp, DiagnosticsTsa, MaintenanceModeResponse,
     ServerAddressReq, ServerAddressResponse, ServerStatus, SimpleSuccessResponse, SystemVersion,
@@ -12,7 +12,7 @@ use super::dto::{
 
 pub struct SystemApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::System")]
 impl SystemApi {
     /// Returns the current operational status and version of the Security Server.
     #[oai(path = "/v1/status", method = "get")]

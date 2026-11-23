@@ -1,3 +1,4 @@
+use crate::handlers::ApiTags;
 use crate::handlers::dto::BackupDto;
 use poem_openapi::{
     OpenApi,
@@ -7,7 +8,7 @@ use poem_openapi::{
 
 pub struct BackupsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Backups")]
 impl BackupsApi {
     #[oai(path = "/v1/backups", method = "get")]
     pub async fn list_backups(&self) -> Json<Vec<BackupDto>> {

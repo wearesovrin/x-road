@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{CreateManagementRequestDto, ManagementRequestDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct ManagementRequestsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::ManagementRequests")]
 impl ManagementRequestsApi {
     #[oai(path = "/v1/management-requests", method = "get")]
     pub async fn list_management_requests(

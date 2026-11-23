@@ -35,10 +35,39 @@ use poem::{
     middleware::{OpenTelemetryMetrics, OpenTelemetryTracing},
 };
 use poem_openapi::{
-    OpenApiService,
+    OpenApiService, Tags,
     param::Path,
     payload::{Json, PlainText},
 };
+
+/// OpenAPI specification tags for categorizing Security Server REST endpoints.
+#[derive(Tags)]
+pub enum ApiTags {
+    /// Initial Security Server setup and configuration
+    Initialization,
+    /// System diagnostics, parameters, and environmental metrics
+    System,
+    /// Client management (members and subsystems)
+    Clients,
+    /// Services, REST endpoints, and service descriptions
+    Services,
+    /// Service endpoint definitions
+    Endpoints,
+    /// Local client access groups
+    LocalGroups,
+    /// Service access rights management
+    AccessRights,
+    /// Cryptographic hardware/software tokens and keys
+    Tokens,
+    /// Approved Certification Authorities (CAs)
+    CertificateAuthorities,
+    /// System configuration backups and restores
+    Backups,
+    /// Management API keys and roles
+    ApiKeys,
+    /// Operational message logging and audit trails
+    MessageLog,
+}
 use serverconf::DatabaseServerConf;
 use signer::SignerServiceImpl;
 use std::sync::Arc;

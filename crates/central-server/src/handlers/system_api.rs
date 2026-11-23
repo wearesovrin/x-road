@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{CentralServerInfo, ServerAddressDto, SystemVersionDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, payload::Json};
 
 pub struct SystemApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::System")]
 impl SystemApi {
     #[oai(path = "/v1/system/server-address", method = "get")]
     pub async fn get_server_address(

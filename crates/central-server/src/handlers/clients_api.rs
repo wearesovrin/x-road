@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::ClientDto;
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, payload::Json};
 
 pub struct ClientsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Clients")]
 impl ClientsApi {
     #[oai(path = "/v1/clients", method = "get")]
     pub async fn list_all_clients(

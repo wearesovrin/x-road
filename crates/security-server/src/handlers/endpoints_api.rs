@@ -3,12 +3,12 @@ use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use sea_orm::EntityTrait;
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{AddEndpointReq, AddGroupMemberReq, EndpointDto, SimpleSuccessResponse};
 
 pub struct EndpointsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Endpoints")]
 impl EndpointsApi {
     /// Creates an endpoint on a service.
     #[oai(path = "/v1/services/:id/endpoints", method = "post")]

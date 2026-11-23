@@ -2,12 +2,12 @@ use chrono::Utc;
 use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{BackupDto, SimpleSuccessResponse};
 
 pub struct BackupsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Backups")]
 impl BackupsApi {
     /// Lists configuration backups.
     #[oai(path = "/v1/backups", method = "get")]

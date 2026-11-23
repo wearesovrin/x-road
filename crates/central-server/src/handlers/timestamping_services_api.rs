@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{AddTsaRequest, ApprovedTsaDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct TimestampingServicesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::TimestampingServices")]
 impl TimestampingServicesApi {
     #[oai(path = "/v1/timestamping-services", method = "get")]
     pub async fn list_timestamping_services(

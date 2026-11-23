@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{InitialRegistrationDto, InitializationStatusDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, payload::Json};
 
 pub struct InitializationApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Initialization")]
 impl InitializationApi {
     #[oai(path = "/v1/initialization/status", method = "get")]
     pub async fn get_initialization_status(

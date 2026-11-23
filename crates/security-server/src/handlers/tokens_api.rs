@@ -2,7 +2,7 @@ use base64::Engine;
 use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{
     CsrDto, GenerateCsrReq, GenerateKeyReq, ImportCertReq, KeyDto, SimpleSuccessResponse, TokenDto,
     TokenLoginReq, TokenPinReq,
@@ -10,7 +10,7 @@ use super::dto::{
 
 pub struct TokensApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Tokens")]
 impl TokensApi {
     /// Lists cryptographic tokens (software and hardware tokens).
     #[oai(path = "/v1/tokens", method = "get")]

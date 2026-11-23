@@ -1,4 +1,4 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{
     AddAuthCertRequest, AddServerClientRequest, LinkClientRequest, RegisterSecurityServerRequest,
     SecurityServerAuthCertDto, SecurityServerDto,
@@ -8,7 +8,7 @@ use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct SecurityServersApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::SecurityServers")]
 impl SecurityServersApi {
     #[oai(path = "/v1/security-servers", method = "get")]
     pub async fn list_security_servers(

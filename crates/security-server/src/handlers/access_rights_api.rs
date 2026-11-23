@@ -2,12 +2,12 @@ use identifiers::{ClientId, ServiceId};
 use poem::web::Data;
 use poem_openapi::{OpenApi, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{AccessRightReq, SimpleSuccessResponse};
 
 pub struct AccessRightsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::AccessRights")]
 impl AccessRightsApi {
     /// Grants access for a client to a service.
     #[oai(path = "/v1/access-rights", method = "post")]

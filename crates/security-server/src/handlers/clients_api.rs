@@ -3,12 +3,12 @@ use identifiers::ClientId;
 use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{ClientDto, RegisterClientReq, SimpleSuccessResponse, StoreCertReq};
 
 pub struct ClientsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Clients")]
 impl ClientsApi {
     /// Lists all registered clients.
     #[oai(path = "/v1/clients", method = "get")]

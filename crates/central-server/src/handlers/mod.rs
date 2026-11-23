@@ -39,7 +39,40 @@ use poem::{
     middleware::{OpenTelemetryMetrics, OpenTelemetryTracing},
     web::Data,
 };
-use poem_openapi::OpenApiService;
+use poem_openapi::{OpenApiService, Tags};
+
+/// OpenAPI specification tags for categorizing Central Server REST endpoints.
+#[derive(Tags)]
+pub enum ApiTags {
+    /// Initial Central Server setup and instance configuration
+    Initialization,
+    /// Member classes (e.g. GOV, COM)
+    MemberClasses,
+    /// X-Road member organizations
+    Members,
+    /// Member subsystems
+    Subsystems,
+    /// Global client queries and lookups
+    Clients,
+    /// Registered Security Servers and authentication certificates
+    SecurityServers,
+    /// Global groups and member assignments
+    GlobalGroups,
+    /// Approved Certification Services (CAs)
+    CertificationServices,
+    /// Approved Timestamping Services (TSAs)
+    TimestampingServices,
+    /// Configuration sources and anchor generation
+    ConfigurationSources,
+    /// System parameters, diagnostics, and metrics
+    System,
+    /// Security Server registration and deletion requests
+    ManagementRequests,
+    /// Configuration backups and restores
+    Backups,
+    /// Management API keys and roles
+    ApiKeys,
+}
 
 #[derive(Clone)]
 pub struct CentralServerState {

@@ -1,12 +1,12 @@
 use poem::web::Data;
 use poem_openapi::{OpenApi, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{ArchiveResponse, LogRecordResponse};
 
 pub struct MessageLogApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::MessageLog")]
 impl MessageLogApi {
     /// Retrieves recent unarchived audit log records from the message log.
     #[oai(path = "/v1/messagelog/recent", method = "get")]

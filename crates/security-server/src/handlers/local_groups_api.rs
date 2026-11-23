@@ -2,12 +2,12 @@ use identifiers::ClientId;
 use poem::web::Data;
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{AddGroupMemberReq, AddLocalGroupReq, LocalGroupDto, SimpleSuccessResponse};
 
 pub struct LocalGroupsApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::LocalGroups")]
 impl LocalGroupsApi {
     /// Lists local groups configured for a client.
     #[oai(path = "/v1/clients/:id/local-groups", method = "get")]

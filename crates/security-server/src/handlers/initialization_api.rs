@@ -2,12 +2,12 @@ use identifiers::ClientId;
 use poem::web::Data;
 use poem_openapi::{OpenApi, payload::Json};
 
-use super::AppState;
+use super::{ApiTags, AppState};
 use super::dto::{InitializationStatus, InitializeServerReq, SimpleSuccessResponse};
 
 pub struct InitializationApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::Initialization")]
 impl InitializationApi {
     /// Checks if the Security Server has been initialized.
     #[oai(path = "/v1/initialization/status", method = "get")]

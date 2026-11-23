@@ -1,11 +1,11 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::{AddMemberClassRequest, MemberClassDto};
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 
 pub struct MemberClassesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::MemberClasses")]
 impl MemberClassesApi {
     #[oai(path = "/v1/member-classes", method = "get")]
     pub async fn list_member_classes(&self, state: Data<&AppState>) -> Json<Vec<MemberClassDto>> {

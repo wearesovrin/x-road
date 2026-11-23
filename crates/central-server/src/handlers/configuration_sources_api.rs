@@ -1,4 +1,4 @@
-use crate::handlers::AppState;
+use crate::handlers::{ApiTags, AppState};
 use crate::handlers::dto::ConfigurationAnchorDto;
 use poem::{http::StatusCode, web::Data};
 use poem_openapi::{
@@ -9,7 +9,7 @@ use poem_openapi::{
 
 pub struct ConfigurationSourcesApi;
 
-#[OpenApi]
+#[OpenApi(tag = "ApiTags::ConfigurationSources")]
 impl ConfigurationSourcesApi {
     #[oai(
         path = "/v1/configuration-sources/:configuration_type/anchor",
