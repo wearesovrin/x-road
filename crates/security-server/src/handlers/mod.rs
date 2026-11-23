@@ -12,7 +12,6 @@ pub mod keys_api;
 pub mod local_groups_api;
 pub mod member_classes_api;
 pub mod message_log_api;
-pub mod openapi_api;
 pub mod services_api;
 pub mod system_api;
 pub mod token_certificates_api;
@@ -33,7 +32,6 @@ pub use keys_api::KeysApi;
 pub use local_groups_api::LocalGroupsApi;
 pub use member_classes_api::MemberClassesApi;
 pub use message_log_api::MessageLogApi;
-pub use openapi_api::OpenapiApi;
 pub use services_api::ServicesApi;
 pub use system_api::SystemApi;
 pub use token_certificates_api::TokenCertificatesApi;
@@ -89,8 +87,6 @@ pub enum ApiTags {
     ApiKeys,
     /// Operational message logging and audit trails
     MessageLog,
-    /// OpenAPI document export
-    Openapi,
 }
 use serverconf::DatabaseServerConf;
 use signer::SignerServiceImpl;
@@ -233,7 +229,6 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
         BackupsApi,
         ApiKeysApi,
         MessageLogApi,
-        OpenapiApi,
     );
 
     let api = (api_part1, api_part2);
@@ -241,6 +236,10 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
     let api_service =
         OpenApiService::new(api, "X-Road Security Server Admin API", "0.1.0").server("/api");
     let ui = api_service.swagger_ui();
+    let spec_yaml = api_service.spec_endpoint_yaml();
+    let spec_yaml_v1 = api_service.spec_endpoint_yaml();
+    let spec_json = api_service.spec_endpoint();
+    let spec_json_v1 = api_service.spec_endpoint();
     let tracer = init_tracer("xroad-security-server");
     let auth_api = api_service
         .with(auth_middleware)
@@ -251,6 +250,10 @@ pub fn admin_api_app(state: AdminApiState) -> Route {
     Route::new()
         .nest("/api", auth_api)
         .nest("/swagger-ui", ui)
+        .at("/openapi.yaml", spec_yaml)
+        .at("/api/v1/openapi.yaml", spec_yaml_v1)
+        .at("/openapi.json", spec_json)
+        .at("/api/v1/openapi.json", spec_json_v1)
         .nest("/", web_ui::security_server_web_ui())
 }
 

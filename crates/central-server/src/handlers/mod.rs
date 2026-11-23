@@ -12,7 +12,6 @@ pub mod management_requests_api;
 pub mod management_services_api;
 pub mod member_classes_api;
 pub mod members_api;
-pub mod openapi_api;
 pub mod security_servers_api;
 pub mod subsystems_api;
 pub mod system_api;
@@ -35,7 +34,6 @@ pub use management_requests_api::ManagementRequestsApi;
 pub use management_services_api::ManagementServicesApi;
 pub use member_classes_api::MemberClassesApi;
 pub use members_api::MembersApi;
-pub use openapi_api::OpenapiApi;
 pub use security_servers_api::SecurityServersApi;
 pub use subsystems_api::SubsystemsApi;
 pub use system_api::SystemApi;
@@ -95,8 +93,6 @@ pub enum ApiTags {
     IssuerService,
     /// DataSpace TLS Certification Authorities
     DsTlsCertificationAuthorities,
-    /// OpenAPI document export
-    Openapi,
 }
 
 #[derive(Clone)]
@@ -162,13 +158,17 @@ pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
         ManagementServicesApi,
         IssuerServiceApi,
         DsTlsApi,
-        OpenapiApi,
     );
     let api = (api_part1, api_part2);
 
     let api_service =
         OpenApiService::new(api, "X-Road Central Server Admin API", "0.1.0").server("/api");
     let ui = api_service.swagger_ui();
+    let spec_yaml = api_service.spec_endpoint_yaml();
+    let spec_yaml_v1 = api_service.spec_endpoint_yaml();
+    let spec_json = api_service.spec_endpoint();
+    let spec_json_v1 = api_service.spec_endpoint();
+
     let auth_api = api_service
         .with(auth_middleware)
         .with(OpenTelemetryMetrics::new())
@@ -179,6 +179,10 @@ pub fn central_server_app(instance_id: String, db: CentralServerDb) -> Route {
     Route::new()
         .nest("/api", auth_api)
         .nest("/swagger-ui", ui)
+        .at("/openapi.yaml", spec_yaml)
+        .at("/api/v1/openapi.yaml", spec_yaml_v1)
+        .at("/openapi.json", spec_json)
+        .at("/api/v1/openapi.json", spec_json_v1)
         .at(
             "/internalconf/shared-params.xml",
             get(handle_shared_params_xml).data(state.clone()),
