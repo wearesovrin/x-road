@@ -7,9 +7,7 @@
 
 This repository contains an independent, pure-Rust implementation of the X-Road data exchange layer. All references to NIIS® and X-Road® are made solely under the fair use doctrine for purposes of identifying compatibility, interoperability, and derivation from the open specifications.
 
-For the official upstream trademark usage guidelines, please refer to:
-- Upstream Java X-Road repository: [java/TRADEMARK.md](java/TRADEMARK.md)
-- Official NIIS Guidelines: [https://github.com/nordic-institute/X-Road/blob/develop/TRADEMARK.md](https://github.com/nordic-institute/X-Road/blob/develop/TRADEMARK.md)
+For the official upstream trademark usage guidelines, please refer to the [Official NIIS Guidelines](https://github.com/nordic-institute/X-Road/blob/develop/TRADEMARK.md).
 
 ## Original Authors and Copyright Notice
 

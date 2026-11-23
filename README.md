@@ -199,7 +199,7 @@ In addition to core X-Road message exchange, this Rust port includes native supp
 
 - **NIIS®** is a European Union Trade Mark (no 017625484) registered by the European Union Intellectual Property Office for the **Nordic Institute for Interoperability Solutions (NIIS)**.
 - **X-Road®** is a European Union trademark (no 017918049) registered by the European Union Intellectual Property Office for the **Estonian Information System Authority (RIA)** and managed and sub-licensed by **NIIS**.
-- For full details, see [TRADEMARK.md](TRADEMARK.md) and the upstream [NIIS Trademark Usage Guidelines](java/TRADEMARK.md) (or [upstream repository](https://github.com/nordic-institute/X-Road/blob/develop/TRADEMARK.md)).
+- For full details, see [TRADEMARK.md](TRADEMARK.md) and the [official NIIS Trademark Usage Guidelines](https://github.com/nordic-institute/X-Road/blob/develop/TRADEMARK.md).
 
 ### Original Authors & Copyright Notice
 
