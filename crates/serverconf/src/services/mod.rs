@@ -364,18 +364,16 @@ impl ServerConfProvider for ServerConf {
             .await
         {
             let group_ids: Vec<i64> = memberships.into_iter().map(|m| m.local_group_id).collect();
-            if !group_ids.is_empty() {
-                if let Ok(groups) = lg_entity::Entity::find()
+            if !group_ids.is_empty()
+                && let Ok(groups) = lg_entity::Entity::find()
                     .filter(lg_entity::Column::Id.is_in(group_ids))
                     .all(self.raw_connection())
                     .await
-                {
-                    for g in groups {
-                        subject_cond = subject_cond.add(
-                            ar_entity::Column::SubjectClientIdStr
-                                .eq(format!("GROUP:{}", g.group_code)),
-                        );
-                    }
+            {
+                for g in groups {
+                    subject_cond = subject_cond.add(
+                        ar_entity::Column::SubjectClientIdStr.eq(format!("GROUP:{}", g.group_code)),
+                    );
                 }
             }
         }

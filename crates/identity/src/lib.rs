@@ -109,14 +109,13 @@ impl VerifiableCredential {
             ));
         }
 
-        if let Some(ref exp_str) = self.expiration_date {
-            if let Ok(exp_time) = exp_str.parse::<DateTime<Utc>>() {
-                if Utc::now() > exp_time {
-                    return Err(XRoadError::AccessDenied(format!(
-                        "Verifiable credential expired at {exp_str}"
-                    )));
-                }
-            }
+        if let Some(ref exp_str) = self.expiration_date
+            && let Ok(exp_time) = exp_str.parse::<DateTime<Utc>>()
+            && Utc::now() > exp_time
+        {
+            return Err(XRoadError::AccessDenied(format!(
+                "Verifiable credential expired at {exp_str}"
+            )));
         }
 
         Ok(())

@@ -60,6 +60,24 @@ pub struct InMemoryServerConf {
     pub service_urls: HashMap<ServiceId, String>,
 }
 
+impl InMemoryServerConf {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_service(&mut self, service: ServiceId, url: String) {
+        self.service_urls.insert(service, url);
+    }
+
+    pub fn allow_client(&mut self, client: ClientId) {
+        self.allowed_clients.insert(client);
+    }
+
+    pub fn grant_access(&mut self, service: ServiceId, client: ClientId) {
+        self.access_rights.entry(service).or_default().insert(client);
+    }
+}
+
 #[tonic::async_trait]
 impl ServerConfProvider for InMemoryServerConf {
     async fn is_client_allowed(&self, client_id: &ClientId) -> XRoadResult<bool> {

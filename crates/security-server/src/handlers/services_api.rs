@@ -59,7 +59,7 @@ impl ServicesApi {
         let service_code = body
             .url
             .split('/')
-            .last()
+            .next_back()
             .filter(|s| !s.is_empty())
             .unwrap_or("service-1");
 

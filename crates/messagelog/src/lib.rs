@@ -54,11 +54,11 @@ impl BatchHasher {
             let mut next_level = Vec::new();
             for chunk in current_level.chunks(2) {
                 let mut hasher = Sha512::new();
-                hasher.update(&chunk[0]);
+                hasher.update(chunk[0]);
                 if chunk.len() > 1 {
-                    hasher.update(&chunk[1]);
+                    hasher.update(chunk[1]);
                 } else {
-                    hasher.update(&chunk[0]);
+                    hasher.update(chunk[0]);
                 }
                 next_level.push(hasher.finalize().into());
             }

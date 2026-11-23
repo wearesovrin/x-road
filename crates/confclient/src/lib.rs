@@ -277,3 +277,77 @@ pub async fn run_confclient(
     tracing::info!("Stopping X-Road Configuration Client Daemon...");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proto::admin_service_server::AdminService;
+    use proto::anchor_service_server::AnchorService;
+    use proto::global_conf_service_server::GlobalConfService;
+
+    #[tokio::test]
+    async fn test_confclient_services() {
+        let anchor = ConfigurationAnchor {
+            instance_identifier: "DEV".to_string(),
+            generated_at: chrono::Utc::now(),
+            download_urls: vec!["http://127.0.0.1:8080/internalconf".to_string()],
+            verification_cert_hashes: vec!["hash123".to_string()],
+        };
+
+        let client = Arc::new(ConfClient::new(anchor));
+
+        // Test anchor service
+        let anchor_adapter = ConfClientAnchorServiceAdapter {
+            inner: client.clone(),
+        };
+        let resp = anchor_adapter
+            .get_configuration_anchor(Request::new(Empty {}))
+            .await
+            .expect("Should return anchor response")
+            .into_inner();
+        let anchor_xml = String::from_utf8(resp.configuration_anchor).unwrap();
+        assert!(anchor_xml.contains("instanceIdentifier>DEV<"));
+        assert!(anchor_xml.contains("http://127.0.0.1:8080/internalconf"));
+
+        // Test admin service
+        let admin_adapter = ConfClientAdminServiceAdapter {
+            inner: client.clone(),
+        };
+        let resp = admin_adapter
+            .check_and_get_connection_status(Request::new(
+                CheckAndGetConnectionStatusRequest::default(),
+            ))
+            .await
+            .expect("Should return connection statuses")
+            .into_inner();
+        assert_eq!(resp.connection_statuses.len(), 1);
+        assert_eq!(
+            resp.connection_statuses[0].download_url,
+            "http://127.0.0.1:8080/internalconf"
+        );
+
+        let diag = admin_adapter
+            .get_status(Request::new(Empty {}))
+            .await
+            .expect("Should return diagnostics")
+            .into_inner();
+        assert_eq!(
+            diag.status,
+            DiagnosticStatusType::DiagnosticStatusUninitialized as i32
+        );
+
+        // Test globalconf service before cache
+        let gconf_adapter = ConfClientGlobalConfServiceAdapter {
+            inner: client.clone(),
+        };
+        let resp = gconf_adapter
+            .get_global_conf(Request::new(GetGlobalConfReq {}))
+            .await
+            .expect("Should query global conf")
+            .into_inner();
+        assert_eq!(
+            resp.status,
+            GetGlobalConfRespStatus::GlobalConfStatusUninitialized as i32
+        );
+    }
+}

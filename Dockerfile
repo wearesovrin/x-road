@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Base builder stage
 # -----------------------------------------------------------------------------
-FROM rust:1.85-bookworm AS builder
+FROM rust:1-bookworm AS builder
 
 # Install build dependencies (protobuf-compiler for prost/tonic)
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -51,7 +51,7 @@ impl ClientProxyState {
 }
 
 /// Parses X-Road headers from REST gateway path format `/r1/{instance}/{class}/{code}/{subsystem}/{service}`
-fn parse_headers_from_rest_path(
+pub fn parse_headers_from_rest_path(
     path: &str,
     header_map: &HashMap<String, String>,
 ) -> Option<XRoadHeaders> {

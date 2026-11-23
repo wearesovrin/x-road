@@ -219,24 +219,24 @@ impl FromStr for ClientId {
 
         match parts.len() {
             3 => {
-                if let Some(p) = raw_type {
-                    if p.eq_ignore_ascii_case("SUBSYSTEM") {
-                        return Err(XRoadError::IdentifierParse(format!(
-                            "Invalid Subsystem identifier '{}': missing subsystem code",
-                            s
-                        )));
-                    }
+                if let Some(p) = raw_type
+                    && p.eq_ignore_ascii_case("SUBSYSTEM")
+                {
+                    return Err(XRoadError::IdentifierParse(format!(
+                        "Invalid Subsystem identifier '{}': missing subsystem code",
+                        s
+                    )));
                 }
                 ClientId::member(parts[0], parts[1], parts[2])
             }
             4 => {
-                if let Some(p) = raw_type {
-                    if p.eq_ignore_ascii_case("MEMBER") {
-                        return Err(XRoadError::IdentifierParse(format!(
-                            "Invalid Member identifier '{}': redundant subsystem code element",
-                            s
-                        )));
-                    }
+                if let Some(p) = raw_type
+                    && p.eq_ignore_ascii_case("MEMBER")
+                {
+                    return Err(XRoadError::IdentifierParse(format!(
+                        "Invalid Member identifier '{}': redundant subsystem code element",
+                        s
+                    )));
                 }
                 ClientId::subsystem(parts[0], parts[1], parts[2], parts[3])
             }

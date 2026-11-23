@@ -14,6 +14,7 @@ use tonic::transport::Channel;
 
 /// High-level client for communicating with the X-Road Signer.
 /// Can operate either as a remote gRPC client or in-process (in-memory) for embedded deployments.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum SignerClient {
     Remote {

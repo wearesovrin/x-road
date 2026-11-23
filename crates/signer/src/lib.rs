@@ -229,11 +229,11 @@ impl SignerServiceImpl {
             .get_mut(token_id)
             .ok_or_else(|| XRoadError::Crypto(format!("Token not found: {token_id}")))?;
 
-        if let Some(ref expected_pin) = token.pin {
-            if expected_pin == pin {
-                token.logged_in = true;
-                return Ok(true);
-            }
+        if let Some(ref expected_pin) = token.pin
+            && expected_pin == pin
+        {
+            token.logged_in = true;
+            return Ok(true);
         }
         Ok(false)
     }
@@ -260,12 +260,11 @@ impl SignerServiceImpl {
             .get_mut(token_id)
             .ok_or_else(|| XRoadError::Crypto(format!("Token not found: {token_id}")))?;
 
-        if let Some(ref current_pin) = token.pin {
-            if let Some(provided_old) = old_pin {
-                if current_pin != provided_old {
-                    return Err(XRoadError::Crypto("Invalid existing PIN".to_string()));
-                }
-            }
+        if let Some(ref current_pin) = token.pin
+            && let Some(provided_old) = old_pin
+            && current_pin != provided_old
+        {
+            return Err(XRoadError::Crypto("Invalid existing PIN".to_string()));
         }
 
         token.pin = Some(new_pin.to_string());
@@ -327,11 +326,11 @@ impl SignerServiceImpl {
 
     /// Digitally signs a pre-computed digest with the given key ID (software key or PKCS#11 HSM).
     pub async fn sign_digest(&self, key_id: &str, digest: &[u8]) -> XRoadResult<Vec<u8>> {
-        if let Some(ref hsm) = self.hsm {
-            if key_id.starts_with("hsm:") || key_id.starts_with("token-1-") {
-                let key_label = key_id.strip_prefix("hsm:").unwrap_or(key_id);
-                return hsm.sign(key_label, digest).await;
-            }
+        if let Some(ref hsm) = self.hsm
+            && (key_id.starts_with("hsm:") || key_id.starts_with("token-1-"))
+        {
+            let key_label = key_id.strip_prefix("hsm:").unwrap_or(key_id);
+            return hsm.sign(key_label, digest).await;
         }
 
         let keys_guard = self.keys.read().await;

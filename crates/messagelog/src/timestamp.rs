@@ -80,7 +80,7 @@ impl TimestampingService {
             XRoadError::MessageLog("Failed to compute batch root hash".to_string())
         })?;
 
-        let root_hash_hex = format!("{:x}", Sha256::digest(&root_hash));
+        let root_hash_hex = format!("{:x}", Sha256::digest(root_hash));
 
         // Attempt timestamping across TSA URLs with retries and fallback
         let mut last_error = None;
@@ -239,9 +239,9 @@ mod tests {
         assert!(
             req_der
                 .windows(9)
-                .any(|w| w == &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03])
+                .any(|w| w == [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03])
         );
         // Contains the dummy digest
-        assert!(req_der.windows(64).any(|w| w == &dummy_digest));
+        assert!(req_der.windows(64).any(|w| w == dummy_digest));
     }
 }

@@ -88,3 +88,50 @@ pub mod headers {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_authenticated_user_roles() {
+        let user = AuthenticatedUser::new(
+            Some("key-1".to_string()),
+            vec![
+                roles::XROAD_SECURITY_OFFICER.to_string(),
+                roles::XROAD_SYSTEM_ADMINISTRATOR.to_string(),
+            ],
+        );
+
+        assert!(user.has_role(roles::XROAD_SECURITY_OFFICER));
+        assert!(user.has_role("xroad_security_officer"));
+        assert!(!user.has_role(roles::XROAD_REGISTRATION_OFFICER));
+
+        assert!(user.has_any_role(&[
+            roles::XROAD_REGISTRATION_OFFICER,
+            roles::XROAD_SECURITY_OFFICER,
+        ]));
+        assert!(!user.has_any_role(&[
+            roles::XROAD_REGISTRATION_OFFICER,
+            roles::XROAD_SERVICE_ADMINISTRATOR,
+        ]));
+    }
+
+    #[test]
+    fn test_parse_api_key_header() {
+        assert_eq!(
+            headers::parse_api_key_header("X-Road-ApiKey token=my-secret-key-123"),
+            Some("my-secret-key-123")
+        );
+        assert_eq!(
+            headers::parse_api_key_header("x-road-apikey token=secret-abc"),
+            Some("secret-abc")
+        );
+        assert_eq!(
+            headers::parse_api_key_header("Bearer token-xyz-789"),
+            Some("token-xyz-789")
+        );
+        assert_eq!(headers::parse_api_key_header("Basic dXNlcjpwYXNz"), None);
+        assert_eq!(headers::parse_api_key_header(""), None);
+    }
+}

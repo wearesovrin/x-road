@@ -99,7 +99,7 @@ impl ApiKeysApi {
                 })),
                 _ => Err(poem::error::NotFoundError.into()),
             },
-            Err(e) => Err(poem::error::BadRequest(e).into()),
+            Err(e) => Err(poem::error::BadRequest(e)),
         }
     }
 

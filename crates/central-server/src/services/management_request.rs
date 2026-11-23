@@ -69,13 +69,12 @@ impl ManagementRequestService {
             | Ok(ManagementRequestType::OwnerChange) => {
                 if let (Some(server_id), Some(client_id_str)) =
                     (req.security_server_id, req.client_id_str.as_ref())
+                    && let Ok(client_id) = client_id_str.parse::<ClientId>()
                 {
-                    if let Ok(client_id) = client_id_str.parse::<ClientId>() {
-                        let _ = SecurityServerService::add_security_server_client(
-                            db, server_id, &client_id,
-                        )
-                        .await;
-                    }
+                    let _ = SecurityServerService::add_security_server_client(
+                        db, server_id, &client_id,
+                    )
+                    .await;
                 }
                 if let (Some(server_id), Some(cert_pem)) =
                     (req.security_server_id, req.auth_cert_pem.as_ref())

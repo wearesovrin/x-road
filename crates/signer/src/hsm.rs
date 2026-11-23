@@ -46,7 +46,7 @@ impl HsmTokenManager {
         };
 
         if let Some(user_pin) = pin {
-            let auth_pin = AuthPin::new(user_pin.to_string().into());
+            let auth_pin = AuthPin::new(user_pin.to_string());
             session.login(UserType::User, Some(&auth_pin))?;
         }
 

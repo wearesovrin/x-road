@@ -92,7 +92,7 @@ impl MessageLogArchiver {
 
         // Ensure archive directory exists
         if !self.archive_dir.exists() {
-            fs::create_dir_all(&self.archive_dir).map_err(|e| XRoadError::Io(e))?;
+            fs::create_dir_all(&self.archive_dir).map_err(XRoadError::Io)?;
         }
 
         let mut archive_buffer = Vec::new();
@@ -203,8 +203,8 @@ impl MessageLogArchiver {
         let final_path = self.archive_dir.join(&filename);
         let tmp_path = self.archive_dir.join(format!(".tmp-{filename}"));
 
-        fs::write(&tmp_path, &archive_buffer).map_err(|e| XRoadError::Io(e))?;
-        fs::rename(&tmp_path, &final_path).map_err(|e| XRoadError::Io(e))?;
+        fs::write(&tmp_path, &archive_buffer).map_err(XRoadError::Io)?;
+        fs::rename(&tmp_path, &final_path).map_err(XRoadError::Io)?;
 
         // Mark processed records as archived in the database
         self.db.mark_archived(&archived_ids).await?;
@@ -231,7 +231,7 @@ pub fn verify_archive(
     prev_digest_override: Option<&str>,
 ) -> XRoadResult<ArchiveVerificationResult> {
     let path_ref = path.as_ref();
-    let file = File::open(path_ref).map_err(|e| XRoadError::Io(e))?;
+    let file = File::open(path_ref).map_err(XRoadError::Io)?;
     let mut zip = ZipArchive::new(file).map_err(|e| XRoadError::Asic(e.to_string()))?;
 
     // 1. Read linkinginfo
@@ -242,7 +242,7 @@ pub fn verify_archive(
     let mut linking_content = String::new();
     linking_entry
         .read_to_string(&mut linking_content)
-        .map_err(|e| XRoadError::Io(e))?;
+        .map_err(XRoadError::Io)?;
     drop(linking_entry);
 
     let lines: Vec<&str> = linking_content.lines().collect();
@@ -313,7 +313,7 @@ pub fn verify_archive(
         let mut container_bytes = Vec::new();
         entry
             .read_to_end(&mut container_bytes)
-            .map_err(|e| XRoadError::Io(e))?;
+            .map_err(XRoadError::Io)?;
         drop(entry);
 
         // Verify cryptographic hash chain
