@@ -51,7 +51,7 @@ impl CentralServerServices {
         let db = Database::connect(db_url).await.map_err(|e| {
             common::XRoadError::Database(format!("Database connection failed: {e}"))
         })?;
-        crate::migration::Migrator::up(&db, None)
+        crate::database::migrations::Migrator::up(&db, None)
             .await
             .map_err(|e| common::XRoadError::Database(format!("Database migration failed: {e}")))?;
         Ok(Self::new(db))
